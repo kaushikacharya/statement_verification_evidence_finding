@@ -20,7 +20,13 @@ def create_valid_xml(xml_text):
     """
     table_pos_arr = []
 
-    for m in re.finditer(r"<[/]*Table \d+>", xml_text):
+    """
+    Examples of <table_id>:
+        <Table 1>
+        <Table A1>
+        <Table A.1>
+    """
+    for m in re.finditer(r"<[/]*Table [\w\.]+>", xml_text):
         if xml_text[m.start() + 1] == "/":
             table_id_start_pos = m.start() + len("</Table ")
         else:
@@ -75,7 +81,8 @@ class Document:
             print("root.tag: {} :: root.attrib: {}".format(root.tag, root.attrib))
 
         for table_item in root.findall("Table"):
-            print("\n{} : {}".format(table_item.tag, table_item.attrib))
+            if verbose:
+                print("\n{} : {}".format(table_item.tag, table_item.attrib))
             for row in table_item.findall("row"):
                 if verbose:
                     print("row: {}".format(row.attrib["row"]))
