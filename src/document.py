@@ -13,10 +13,11 @@ Document contains one or more tables.
 
 def create_valid_xml(xml_text):
     """Convert xml into a valid xml.
+        N.B. This refers to data version: v1. In the next version v1.2, data is a valid xml format.
         XML provided as part of Shared Task crashes while parsing by ElementTree.
         Following two changes are done:
         1. <Table table_id> => <Table id="table_id">
-        2. Given xml is put under the item TableSet.
+        2. Given xml is put under the item Document.
     """
     table_pos_arr = []
 
@@ -40,7 +41,7 @@ def create_valid_xml(xml_text):
         # store the text span positions in original text and the modified text
         table_pos_arr.append((m.start(), m.end(), table_item_mod))
 
-    xml_text_mod = "<TableSet>/n"
+    xml_text_mod = "<Document>/n"
     pos = 0
     for pos_i in range(len(table_pos_arr)):
         # text portion from the end of previous Table element
@@ -54,7 +55,7 @@ def create_valid_xml(xml_text):
 
     # appending the rest of the text i.e. the text after the final Table element
     xml_text_mod += xml_text[pos:]
-    xml_text_mod += "</TableSet>"
+    xml_text_mod += "</Document>"
 
     return xml_text_mod
 
@@ -66,7 +67,16 @@ class Document:
     def __init__(self):
         pass
 
-    def parse_xml(self, xml_file, flag_modify_xml=True, verbose=False):
+    def parse_xml(self, xml_file, table_tag="table", flag_modify_xml=False, verbose=False):
+        """Parse xml of the document.
+
+            Parameters
+            ----------
+            xml_file : filepath (XML document file path)
+            table_tag : str (For v1 its "Table")
+            flag_modify_xml : bool (True for data version v1)
+            verbose : bool
+        """
         assert os.path.exists(xml_file), "XML file; {} NOT found".format(xml_file)
         # tree = ET.parse(xml_file)
         # root = tree.getroot()
@@ -77,20 +87,55 @@ class Document:
             xml_text = create_valid_xml(xml_text=xml_text)
 
         root = ET.fromstring(xml_text)
-        if verbose:
+        if True:
             print("root.tag: {} :: root.attrib: {}".format(root.tag, root.attrib))
 
-        for table_item in root.findall("Table"):
-            if verbose:
+        # iterate over the tables
+        for table_item in root.findall(table_tag):
+            if True:
                 print("\n{} : {}".format(table_item.tag, table_item.attrib))
+
+            # iterate over the rows
+            max_row_id = -1
+            max_col_id = -1
+            continuous_cols_upto_arr = []
             for row in table_item.findall("row"):
                 if verbose:
                     print("row: {}".format(row.attrib["row"]))
+                cur_row_id = int(row.attrib["row"])
+                if cur_row_id > max_row_id:
+                    max_row_id = cur_row_id
+
+                # iterate over the cells of the row
+                cur_row_continuous_cols_upto = -1
                 for cell in row.findall("cell"):
                     # Comparing with accompanied html shows additional whitespaces, newlines have been added into cell text of the xml.
                     cell_text = re.sub(r"\s+", " ", cell.attrib["text"])
                     if verbose:
                         print("\tcol: {} :: text: {}".format(cell.attrib["col"], cell_text))
+                    cur_col_id = int(cell.attrib["col"])
+                    if cur_col_id > max_col_id:
+                        max_col_id = cur_col_id
+
+                    if (cell_text != "") and (cur_col_id == (cur_row_continuous_cols_upto+1)):
+                        cur_row_continuous_cols_upto = cur_col_id
+
+                continuous_cols_upto_arr.append(cur_row_continuous_cols_upto)
+
+            # identify the row from which table data starts
+            table_data_row_id = None
+            for row_id in range(max_row_id):
+                if continuous_cols_upto_arr[row_id] == max_col_id:
+                    if row_id == 0:
+                        table_data_row_id = row_id + 1
+                    else:
+                        table_data_row_id = row_id
+
+                    break
+
+            if True:
+                print("\nCount: rows: {} :: cols: {}".format(max_row_id+1, max_col_id+1))
+                print("Header row range: ({},{}) :: data row range: ({},{})".format(0, table_data_row_id, table_data_row_id, max_row_id+1))
 
             for statements in table_item.findall('statements'):
                 for statement in statements:
@@ -111,7 +156,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir", action="store", default="C:/KA/data/NLP/statement_verification_evidence_finding/v1/output/", dest="data_dir")
+    parser.add_argument("--data_dir", action="store", default="C:/KA/data/NLP/statement_verification_evidence_finding/v1.2/output/", dest="data_dir")
     parser.add_argument("--filename", action="store", dest="filename")
     parser.add_argument("--verbose", action="store_true", default=False, dest="verbose")
     args = parser.parse_args()
