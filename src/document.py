@@ -1,15 +1,19 @@
 #!/usr/bin/env python
 
-import argparse
-import io
-import os
-import re
-import xml.etree.ElementTree as ET
-
 """
 Process an XML document.
 Document contains one or more tables.
 """
+
+import argparse
+import io
+import os
+import pandas as pd
+import re
+import xml.etree.ElementTree as ET
+
+pd.set_option("display.max_columns", 20)
+
 
 def create_valid_xml(xml_text):
     """Convert xml into a valid xml.
@@ -130,12 +134,65 @@ class Document:
                         table_data_row_id = row_id + 1
                     else:
                         table_data_row_id = row_id
-
                     break
 
             if True:
-                print("\nCount: rows: {} :: cols: {}".format(max_row_id+1, max_col_id+1))
-                print("Header row range: ({},{}) :: data row range: ({},{})".format(0, table_data_row_id, table_data_row_id, max_row_id+1))
+                print("\nCount: rows: {} :: cols: {}".format(max_row_id + 1, max_col_id + 1))
+                print("Header row range: ({},{}) :: data row range: ({},{})".format(0, table_data_row_id,
+                                                                                    table_data_row_id,
+                                                                                    max_row_id + 1))
+            # Populate table dataframe
+            table_header = []
+            table_data = []  # list of list
+            for row in table_item.findall("row"):
+                cur_row_id = int(row.attrib["row"])
+
+                if cur_row_id < table_data_row_id:
+                    # row represents column headers
+                    prev_col_id = -1
+                    prev_col_text = None
+                    table_row_header = [None for i in range(max_col_id+1)]
+                    for cell in row.findall("cell"):
+                        cell_text = re.sub(r"\s+", " ", cell.attrib["text"])
+                        cur_col_id = int(cell.attrib["col"])
+
+                        if cell_text == "":
+                            continue
+
+                        # Assign previous column header to the column positions between previous cell and current cell
+                        # Represents the case of nested headers. The current column will have sub-columns nested under it in the next row.
+                        for col_id in range(prev_col_id+1, cur_col_id):
+                            table_row_header[col_id] = prev_col_text
+
+                        # Assign column header to current column position
+                        table_row_header[cur_col_id] = cell_text
+
+                        # update
+                        prev_col_id = cur_col_id
+                        prev_col_text = cell_text
+
+                    # Assigning for the last columns in case of nested header
+                    for col_id in range(prev_col_id+1, max_col_id+1):
+                        table_row_header[col_id] = prev_col_text
+
+                    table_header.append(table_row_header)
+                else:
+                    # row represents table data
+                    table_row_data = [None for i in range(max_col_id+1)]
+                    for cell in row.findall("cell"):
+                        cell_text = re.sub(r"\s+", " ", cell.attrib["text"])
+                        cur_col_id = int(cell.attrib["col"])
+                        table_row_data[cur_col_id] = cell_text
+
+                    table_data.append(table_row_data)
+
+            if len(table_header) == 1:
+                table_df = pd.DataFrame(data=table_data, columns=table_header[0])
+            else:
+                table_df = pd.DataFrame(data=table_data, columns=pd.MultiIndex.from_tuples(list(zip(*table_header))))
+
+            if True:
+                print(table_df)
 
             for statements in table_item.findall('statements'):
                 for statement in statements:
