@@ -13,21 +13,18 @@ class Dataset:
         pass
 
     def process_data_dir(self, data_dir):
-        failed_files = []
-        n_success_files = 0
+        failed_tables_dataset = []
+        n_files = 0
         for xml_file_path in glob.iglob(os.path.join(data_dir, "*.xml")):
             print("\n{}".format(xml_file_path))
-            try:
-                doc_obj = Document()
-                doc_obj.parse_xml(xml_file=xml_file_path, verbose=False)
-                n_success_files += 1
-            except Exception:
-                print("Failed in {}".format(xml_file_path))
-                traceback.print_exc()
-                failed_files.append(os.path.basename(xml_file_path))
+            doc_obj = Document()
+            failed_tables_doc = doc_obj.parse_xml(xml_file=xml_file_path, verbose=False)
+            if len(failed_tables_doc) > 0:
+                failed_tables_dataset.append({os.path.basename(xml_file_path): failed_tables_doc})
+            n_files += 1
 
-        print("Failed files: {}".format(failed_files))
-        print("Successfully processed {} files".format(n_success_files))
+        print("Failed tables: {}".format(failed_tables_dataset))
+        print("Processed {} files".format(n_files))
 
 def main(args):
     dataset_obj = Dataset()
