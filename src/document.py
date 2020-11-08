@@ -98,6 +98,9 @@ class Document:
             print("root.tag: {} :: root.attrib: {}".format(root.tag, root.attrib))
 
         failed_tables = []
+        n_statements_doc = 0
+        n_tables_doc = 0
+
         # iterate over the tables
         for table_item in root.findall(table_tag):
             if True:
@@ -105,13 +108,15 @@ class Document:
 
             try:
                 table_obj = Table()
-                table_df = table_obj.parse_xml(table_item=table_item, verbose=verbose)
+                table_df, n_statements_table = table_obj.parse_xml(table_item=table_item, verbose=verbose)
+                n_statements_doc += n_statements_table
+                n_tables_doc += 1
             except Exception:
                 print("Failed in table id: {} :: file: {}".format(table_item.attrib["id"], xml_file))
                 traceback.print_exc()
                 failed_tables.append(table_item.attrib["id"])
 
-        return failed_tables
+        return failed_tables, n_tables_doc, n_statements_doc
 
 
 def main(args):

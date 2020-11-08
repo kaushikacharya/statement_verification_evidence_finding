@@ -144,8 +144,10 @@ class Table:
             print(table_df)
             print("Column dtypes:\n{}".format(table_df.dtypes))
 
+        n_statements = 0
         for statements in table_item.findall('statements'):
             for statement in statements:
+                n_statements += 1
                 # print(statement.tag, type(statement.attrib))
                 statement_id = statement.attrib["id"]
                 statement_text = statement.attrib["text"]
@@ -154,4 +156,4 @@ class Table:
                     print("Statement: id: {} :: type: {} :: text: {}".format(statement_id, statement_type,
                                                                              statement_text))
 
-        return table_df
+        return table_df, n_statements
