@@ -10,7 +10,10 @@ import io
 import os
 import pandas as pd
 import re
+import traceback
 import xml.etree.ElementTree as ET
+
+from src.table import Table
 
 pd.set_option("display.max_columns", 20)
 
@@ -94,115 +97,21 @@ class Document:
         if True:
             print("root.tag: {} :: root.attrib: {}".format(root.tag, root.attrib))
 
+        failed_tables = []
         # iterate over the tables
         for table_item in root.findall(table_tag):
             if True:
                 print("\n{} : {}".format(table_item.tag, table_item.attrib))
 
-            # iterate over the rows
-            max_row_id = -1
-            max_col_id = -1
-            continuous_cols_upto_arr = []
-            for row in table_item.findall("row"):
-                if verbose:
-                    print("row: {}".format(row.attrib["row"]))
-                cur_row_id = int(row.attrib["row"])
-                if cur_row_id > max_row_id:
-                    max_row_id = cur_row_id
+            try:
+                table_obj = Table()
+                table_df = table_obj.parse_xml(table_item=table_item, verbose=verbose)
+            except Exception:
+                print("Failed in table id: {} :: file: {}".format(table_item.attrib["id"], xml_file))
+                traceback.print_exc()
+                failed_tables.append(table_item.attrib["id"])
 
-                # iterate over the cells of the row
-                cur_row_continuous_cols_upto = -1
-                for cell in row.findall("cell"):
-                    # Comparing with accompanied html shows additional whitespaces, newlines have been added into cell text of the xml.
-                    cell_text = re.sub(r"\s+", " ", cell.attrib["text"])
-                    if verbose:
-                        print("\tcol: {} :: text: {}".format(cell.attrib["col"], cell_text))
-                    cur_col_id = int(cell.attrib["col"])
-                    if cur_col_id > max_col_id:
-                        max_col_id = cur_col_id
-
-                    if (cell_text != "") and (cur_col_id == (cur_row_continuous_cols_upto+1)):
-                        cur_row_continuous_cols_upto = cur_col_id
-
-                continuous_cols_upto_arr.append(cur_row_continuous_cols_upto)
-
-            # identify the row from which table data starts
-            table_data_row_id = None
-            for row_id in range(max_row_id):
-                if continuous_cols_upto_arr[row_id] == max_col_id:
-                    if row_id == 0:
-                        table_data_row_id = row_id + 1
-                    else:
-                        table_data_row_id = row_id
-                    break
-
-            if True:
-                print("\nCount: rows: {} :: cols: {}".format(max_row_id + 1, max_col_id + 1))
-                print("Header row range: ({},{}) :: data row range: ({},{})".format(0, table_data_row_id,
-                                                                                    table_data_row_id,
-                                                                                    max_row_id + 1))
-            # Populate table dataframe
-            table_header = []
-            table_data = []  # list of list
-            for row in table_item.findall("row"):
-                cur_row_id = int(row.attrib["row"])
-
-                if cur_row_id < table_data_row_id:
-                    # row represents column headers
-                    prev_col_id = -1
-                    prev_col_text = None
-                    table_row_header = [None for i in range(max_col_id+1)]
-                    for cell in row.findall("cell"):
-                        cell_text = re.sub(r"\s+", " ", cell.attrib["text"])
-                        cur_col_id = int(cell.attrib["col"])
-
-                        if cell_text == "":
-                            continue
-
-                        # Assign previous column header to the column positions between previous cell and current cell
-                        # Represents the case of nested headers. The current column will have sub-columns nested under it in the next row.
-                        for col_id in range(prev_col_id+1, cur_col_id):
-                            table_row_header[col_id] = prev_col_text
-
-                        # Assign column header to current column position
-                        table_row_header[cur_col_id] = cell_text
-
-                        # update
-                        prev_col_id = cur_col_id
-                        prev_col_text = cell_text
-
-                    # Assigning for the last columns in case of nested header
-                    for col_id in range(prev_col_id+1, max_col_id+1):
-                        table_row_header[col_id] = prev_col_text
-
-                    table_header.append(table_row_header)
-                else:
-                    # row represents table data
-                    table_row_data = [None for i in range(max_col_id+1)]
-                    for cell in row.findall("cell"):
-                        cell_text = re.sub(r"\s+", " ", cell.attrib["text"])
-                        cur_col_id = int(cell.attrib["col"])
-                        table_row_data[cur_col_id] = cell_text
-
-                    table_data.append(table_row_data)
-
-            if len(table_header) == 1:
-                table_df = pd.DataFrame(data=table_data, columns=table_header[0])
-            else:
-                table_df = pd.DataFrame(data=table_data, columns=pd.MultiIndex.from_tuples(list(zip(*table_header))))
-
-            if True:
-                print(table_df)
-
-            for statements in table_item.findall('statements'):
-                for statement in statements:
-                    # print(statement.tag, type(statement.attrib))
-                    statement_id = statement.attrib["id"]
-                    statement_text = statement.attrib["text"]
-                    statement_type = statement.attrib["type"]
-                    if verbose:
-                        print("Statement: id: {} :: type: {} :: text: {}".format(statement_id, statement_type,
-                                                                                 statement_text))
+        return failed_tables
 
 
 def main(args):
