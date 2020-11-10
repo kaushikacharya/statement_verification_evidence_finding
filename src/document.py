@@ -108,8 +108,8 @@ class Document:
 
             try:
                 table_obj = Table()
-                table_df, n_statements_table = table_obj.parse_xml(table_item=table_item, verbose=verbose)
-                n_statements_doc += n_statements_table
+                table_obj.parse_xml(table_item=table_item, verbose=verbose)
+                n_statements_doc += len(table_obj.statements)
                 n_tables_doc += 1
             except Exception:
                 print("Failed in table id: {} :: file: {}".format(table_item.attrib["id"], xml_file))

@@ -3,20 +3,47 @@
 import pandas as pd
 import re
 
+from pandas.api.types import is_numeric_dtype
+
 from src.utils import *
+
+
+class Statement:
+    def __init__(self, statement_id, text, statement_type=None):
+        self.id = statement_id
+        self.text = text
+        self.type = statement_type
+
 
 class Table:
     def __init__(self):
-        pass
+        self.table_id = None
+        self.caption_text = ""
+        self.legend_text = ""
+        self.df = None
+        self.statements = []
 
     def parse_xml(self, table_item, verbose=False):
         """Parse table item of xml
 
             Parameters
             ----------
-            table_item : table item
+            table_item : table element
             verbose : bool
         """
+
+        self.table_id = table_item.attrib["id"]
+
+        # extract caption text
+        caption = table_item.find('caption')
+        if caption:
+            self.caption_text = re.sub(r"\s+", " ", caption.attrib['text'])
+
+        # extract legend text
+        legend = table_item.find('legend')
+        if legend:
+            self.legend_text = re.sub(r"\s+", " ", legend.attrib['text'])
+
         # iterate over the rows to identify column range and row range
         # This helps in identifying empty columns at the end which can be skipped while forming the dataframe
         max_row_id = -1
@@ -140,9 +167,18 @@ class Table:
         else:
             table_df = pd.DataFrame(data=table_data, columns=pd.MultiIndex.from_tuples(list(zip(*table_header))))
 
+        self.df = table_df
+
         if True:
             print(table_df)
             print("Column dtypes:\n{}".format(table_df.dtypes))
+            # Identify columns having numeric data type
+            numeric_columns = []
+            for col_name in table_df.columns:
+                if is_numeric_dtype(table_df[col_name]):
+                    numeric_columns.append(col_name)
+            if len(numeric_columns):
+                print("Numeric columns: {}".format(numeric_columns))
 
         n_statements = 0
         for statements in table_item.findall('statements'):
@@ -155,5 +191,7 @@ class Table:
                 if verbose:
                     print("Statement: id: {} :: type: {} :: text: {}".format(statement_id, statement_type,
                                                                              statement_text))
+                if statement_type == "":
+                    statement_type = None
 
-        return table_df, n_statements
+                self.statements.append(Statement(statement_id=statement_id, text=statement_text, statement_type=statement_type))
