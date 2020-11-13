@@ -9,10 +9,11 @@ from src.utils import *
 
 
 class Statement:
-    def __init__(self, statement_id, text, statement_type=None):
+    def __init__(self, statement_id, text, statement_type=None, columns_matched=None):
         self.id = statement_id
         self.text = text
         self.type = statement_type
+        self.columns_matched = columns_matched
 
 
 class Table:
@@ -108,7 +109,7 @@ class Table:
         assert table_data_row_id <= max_row_id, "table_data_row_id: {} > max_row_id: {}".format(table_data_row_id,
                                                                                                 max_row_id)
 
-        if True:
+        if verbose:
             print("\nCount: rows: {} :: cols: {}".format(max_row_id + 1, max_col_id + 1))
             print("Header row range: ({},{}) :: data row range: ({},{})".format(0, table_data_row_id,
                                                                                 table_data_row_id,
@@ -188,10 +189,59 @@ class Table:
                 statement_id = statement.attrib["id"]
                 statement_text = statement.attrib["text"]
                 statement_type = statement.attrib["type"]
-                if verbose:
+                if True:
                     print("Statement: id: {} :: type: {} :: text: {}".format(statement_id, statement_type,
                                                                              statement_text))
                 if statement_type == "":
                     statement_type = None
 
                 self.statements.append(Statement(statement_id=statement_id, text=statement_text, statement_type=statement_type))
+
+    def process_table(self, verbose=False):
+        if isinstance(self.df.columns, pd.MultiIndex):
+            return
+        column_names = [x for x in self.df.columns if x]
+        if len(column_names) == 0:
+            return
+
+        # regex pattern to search for column names
+        # N.B. Fails when words have alphanumeric characters. e.g. Column: Pmid [m]   20856.xml
+        if False:
+            regex_pattern = r'('
+            for i, column_name in enumerate(column_names):
+                if i > 0:
+                    regex_pattern += r'|'
+                regex_pattern += r'\b{}\b'.format(column_name)
+            regex_pattern += r')'
+
+        for stmnt_i in range(len(self.statements)):
+            print("Statement #{} :: id: {}".format(stmnt_i, self.statements[stmnt_i].id))
+            # Identify columns in statement
+            if False:
+                columns_matched = re.findall(pattern=regex_pattern, string=self.statements[stmnt_i].text, flags=re.I)
+                if len(columns_matched) > 0:
+                    print("\tColumns matched: {}".format(columns_matched))
+
+            statement_text_lower = self.statements[stmnt_i].text.lower()
+            columns_matched = []
+            for column_name in column_names:
+                start_pos_arr = [i for i in range(len(statement_text_lower)) if statement_text_lower.startswith(column_name.lower(), i)]
+                flag_column_matched = False
+                for start_pos in start_pos_arr:
+                    if start_pos > 0 and statement_text_lower[start_pos-1] != " ":
+                        continue
+                    end_pos = start_pos + len(column_name)
+                    if end_pos < len(statement_text_lower) and statement_text_lower[end_pos] != " ":
+                        continue
+                    flag_column_matched = True
+
+                if flag_column_matched:
+                    columns_matched.append(column_name)
+                    print("\tColumn matched: {}".format(column_name))
+
+            if columns_matched:
+                self.statements[stmnt_i].columns_matched = columns_matched
+
+            m = re.search(r'(\bhighest\b|\blowest\b)', self.statements[stmnt_i].text, flags=re.I)
+            if m:
+                print("\t{}".format(m.group(0)))

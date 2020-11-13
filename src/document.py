@@ -99,6 +99,7 @@ class Document:
 
         failed_tables = []
         n_statements_doc = 0
+        n_statements_with_column_matched_doc = 0
         n_tables_doc = 0
 
         # iterate over the tables
@@ -108,15 +109,19 @@ class Document:
 
             try:
                 table_obj = Table()
-                table_obj.parse_xml(table_item=table_item, verbose=verbose)
+                table_obj.parse_xml(table_item=table_item, verbose=False)
+                table_obj.process_table()
                 n_statements_doc += len(table_obj.statements)
                 n_tables_doc += 1
+                for stmnt_i in range(len(table_obj.statements)):
+                    if table_obj.statements[stmnt_i].columns_matched:
+                        n_statements_with_column_matched_doc += 1
             except Exception:
                 print("Failed in table id: {} :: file: {}".format(table_item.attrib["id"], xml_file))
                 traceback.print_exc()
                 failed_tables.append(table_item.attrib["id"])
 
-        return failed_tables, n_tables_doc, n_statements_doc
+        return failed_tables, n_tables_doc, n_statements_doc, n_statements_with_column_matched_doc
 
 
 def main(args):
