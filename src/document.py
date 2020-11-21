@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 from src.table import Table
 
 pd.set_option("display.max_columns", 20)
+# pd.set_option("display.encoding", "utf-8")
 
 
 def create_valid_xml(xml_text):
@@ -93,8 +94,11 @@ class Document:
         if flag_modify_xml:
             xml_text = create_valid_xml(xml_text=xml_text)
 
+        # Adding xml declaration as a first line
+        xml_text = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_text
+
         root = ET.fromstring(xml_text)
-        if True:
+        if False:
             print("root.tag: {} :: root.attrib: {}".format(root.tag, root.attrib))
 
         failed_tables = []

@@ -7,6 +7,9 @@ from pandas.api.types import is_numeric_dtype
 
 from src.utils import *
 
+# pd.set_option("display.max_columns", 20)
+# pd.set_option("display.encoding", "utf-8")
+
 
 class Statement:
     def __init__(self, statement_id, text, statement_type=None, columns_matched=None):
@@ -157,7 +160,8 @@ class Table:
                     if cell_text == "":
                         continue
 
-                    cell_data = float(cell_text) if is_number(cell_text) else cell_text
+                    _, cell_data = is_number(cell_text)
+                    # cell_data = float(cell_text) if is_number(cell_text) else cell_text
                     cur_col_id = int(cell.attrib["col"])
                     table_row_data[cur_col_id] = cell_data
 

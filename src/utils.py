@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 def is_number(s):
-    """Identify whether input string is a number or not
+    """Identify whether input string is a number or not.
 
     References
     ----------
@@ -13,7 +13,12 @@ def is_number(s):
         Regex handles exponential part too.
     """
     try:
-        float(s)
-        return True
+        # minus sign in negative numbers have been found in the dataset with minus sign: unicode U+2212
+        # These are replaced with the regular hyphen minus symbol unicode U+002D
+        # https://unicodelookup.com/#minus/1 mentions both the symbols.
+        if s.startswith("−"):
+            s = "-" + s[1:]
+
+        return True, float(s)
     except ValueError:
-        return False
+        return False, s
