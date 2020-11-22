@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
+import os
 import pandas as pd
 import re
 
 from pandas.api.types import is_numeric_dtype
+from spacy import displacy
 
 from src.utils import *
 
@@ -20,7 +22,9 @@ class Statement:
 
 
 class Table:
-    def __init__(self):
+    def __init__(self, doc_id, nlp_process_obj):
+        self.doc_id = doc_id
+        self.nlp_process_obj = nlp_process_obj
         self.table_id = None
         self.caption_text = ""
         self.legend_text = ""
@@ -28,7 +32,7 @@ class Table:
         self.statements = []
 
     def parse_xml(self, table_item, verbose=False):
-        """Parse table item of xml
+        """Parse table element of xml
 
             Parameters
             ----------
@@ -185,6 +189,13 @@ class Table:
             if len(numeric_columns):
                 print("Numeric columns: {}".format(numeric_columns))
 
+        if verbose:
+            m = re.search(r'\d+', self.table_id)
+            assert m, "Table id: {} does not contain numerals".format(self.table_id)
+            output_dir = os.path.join(os.path.dirname(__file__), "../output/debug", self.doc_id, m.group(0))
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
         n_statements = 0
         for statements in table_item.findall('statements'):
             for statement in statements:
@@ -193,9 +204,18 @@ class Table:
                 statement_id = statement.attrib["id"]
                 statement_text = statement.attrib["text"]
                 statement_type = statement.attrib["type"]
+                doc_statement = self.nlp_process_obj.construct_doc(text=statement_text)
+
                 if True:
                     print("Statement: id: {} :: type: {} :: text: {}".format(statement_id, statement_type,
                                                                              statement_text))
+
+                if verbose:
+                    svg = displacy.render(doc_statement, style="dep")
+                    svg_statement_file = os.path.join(output_dir, statement_id + ".svg")
+                    with open(svg_statement_file, mode="w", encoding="utf-8") as fd:
+                        fd.write(svg)
+
                 if statement_type == "":
                     statement_type = None
 
@@ -246,6 +266,6 @@ class Table:
             if columns_matched:
                 self.statements[stmnt_i].columns_matched = columns_matched
 
-            m = re.search(r'(\bhighest\b|\blowest\b)', self.statements[stmnt_i].text, flags=re.I)
+            m = re.search(r'(\bhighest\b|\bgreatest\b|\blowest\b)', self.statements[stmnt_i].text, flags=re.I)
             if m:
                 print("\t{}".format(m.group(0)))

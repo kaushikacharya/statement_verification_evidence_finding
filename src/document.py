@@ -13,6 +13,7 @@ import re
 import traceback
 import xml.etree.ElementTree as ET
 
+from src.nlp_process import NLPProcess
 from src.table import Table
 
 pd.set_option("display.max_columns", 20)
@@ -25,7 +26,7 @@ def create_valid_xml(xml_text):
         XML provided as part of Shared Task crashes while parsing by ElementTree.
         Following two changes are done:
         1. <Table table_id> => <Table id="table_id">
-        2. Given xml is put under the item Document.
+        2. Given xml is put under the xml element Document.
     """
     table_pos_arr = []
 
@@ -72,8 +73,9 @@ class Document:
     """This class corresponds to the XML document of a paper.
         This contains table(s) and statements.
     """
-    def __init__(self):
-        pass
+    def __init__(self, nlp_process_obj):
+        self.doc_id = None
+        self.nlp_process_obj = nlp_process_obj
 
     def parse_xml(self, xml_file, table_tag="table", flag_modify_xml=False, verbose=False):
         """Parse xml of the document.
@@ -82,10 +84,13 @@ class Document:
             ----------
             xml_file : filepath (XML document file path)
             table_tag : str (For v1 its "Table")
-            flag_modify_xml : bool (True for data version v1)
+            flag_modify_xml : bool (True only for data version v1)
             verbose : bool
         """
         assert os.path.exists(xml_file), "XML file; {} NOT found".format(xml_file)
+
+        self.doc_id = os.path.splitext(os.path.basename(xml_file))[0]
+
         # tree = ET.parse(xml_file)
         # root = tree.getroot()
         with io.open(xml_file, encoding="utf-8") as fd:
@@ -112,8 +117,8 @@ class Document:
                 print("\n{} : {}".format(table_item.tag, table_item.attrib))
 
             try:
-                table_obj = Table()
-                table_obj.parse_xml(table_item=table_item, verbose=False)
+                table_obj = Table(doc_id=self.doc_id, nlp_process_obj=self.nlp_process_obj)
+                table_obj.parse_xml(table_item=table_item, verbose=verbose)
                 table_obj.process_table()
                 n_statements_doc += len(table_obj.statements)
                 n_tables_doc += 1
@@ -130,7 +135,9 @@ class Document:
 
 def main(args):
     xml_file = os.path.join(args.data_dir, args.filename)
-    doc_obj = Document()
+    nlp_process_obj = NLPProcess()
+    nlp_process_obj.load_nlp_model(verbose=args.verbose)
+    doc_obj = Document(nlp_process_obj=nlp_process_obj)
     doc_obj.parse_xml(xml_file=xml_file, verbose=args.verbose)
 
 
