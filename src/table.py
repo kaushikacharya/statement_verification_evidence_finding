@@ -13,12 +13,26 @@ from src.utils import *
 # pd.set_option("display.encoding", "utf-8")
 
 
+class Token:
+    def __init__(self, text, lemma=None, normalized_text=None, part_of_speech_coarse=None,
+                 part_of_speech_fine_grained=None, dependency_tag=None, head_index=None, children_index_arr=None):
+        self.text = text
+        self.lemma = lemma
+        self.normalized_text = normalized_text
+        self.part_of_speech_coarse = part_of_speech_coarse
+        self.part_of_speech_fine_grained = part_of_speech_fine_grained
+        self.dependency_tag = dependency_tag
+        self.head_index = head_index
+        self.children_index_arr = children_index_arr
+
+
 class Statement:
-    def __init__(self, statement_id, text, statement_type=None, columns_matched=None):
+    def __init__(self, statement_id, text, statement_type=None, columns_matched=None, tokens=None):
         self.id = statement_id
         self.text = text
         self.type = statement_type
         self.columns_matched = columns_matched
+        self.tokens = tokens
 
 
 class Table:
@@ -210,6 +224,19 @@ class Table:
                     print("Statement: id: {} :: type: {} :: text: {}".format(statement_id, statement_type,
                                                                              statement_text))
 
+                statement_obj = Statement(statement_id=statement_id, text=statement_text, statement_type=statement_type)
+                statement_obj.tokens = []
+                for token in doc_statement:
+                    token_obj = Token(text=token.text, lemma=token.lemma_, normalized_text=token.norm_,
+                                      part_of_speech_coarse=token.pos_, part_of_speech_fine_grained=token.tag_,
+                                      dependency_tag=token.dep_, head_index=token.head.i,
+                                      children_index_arr=[child.i for child in token.children])
+                    statement_obj.tokens.append(token_obj)
+
+                if verbose:
+                    for token in doc_statement:
+                        print("\ttoken: text: {} :: lemma: {} :: norm: {} :: POS: {} :: tag: {} :: dep: {}".format(token.text, token.lemma_, token.norm_, token.pos_, token.tag_, token.dep_))
+
                 if verbose:
                     svg = displacy.render(doc_statement, style="dep")
                     svg_statement_file = os.path.join(output_dir, statement_id + ".svg")
@@ -219,7 +246,7 @@ class Table:
                 if statement_type == "":
                     statement_type = None
 
-                self.statements.append(Statement(statement_id=statement_id, text=statement_text, statement_type=statement_type))
+                self.statements.append(statement_obj)
 
     def process_table(self, verbose=False):
         if isinstance(self.df.columns, pd.MultiIndex):
@@ -265,6 +292,23 @@ class Table:
 
             if columns_matched:
                 self.statements[stmnt_i].columns_matched = columns_matched
+
+            rows_matched = []
+            for row_name in self.df[column_names[0]]:
+                start_pos_arr = [i for i in range(len(statement_text_lower)) if
+                                 statement_text_lower.startswith(row_name.lower(), i)]
+                flag_row_matched = False
+                for start_pos in start_pos_arr:
+                    if start_pos > 0 and statement_text_lower[start_pos - 1] != " ":
+                        continue
+                    end_pos = start_pos + len(row_name)
+                    if end_pos < len(statement_text_lower) and statement_text_lower[end_pos] != " ":
+                        continue
+                    flag_row_matched = True
+
+                if flag_row_matched:
+                    rows_matched.append(row_name)
+                    print("\tRow matched: {}".format(row_name))
 
             m = re.search(r'(\bhighest\b|\bgreatest\b|\blowest\b)', self.statements[stmnt_i].text, flags=re.I)
             if m:
