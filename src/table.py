@@ -42,7 +42,10 @@ class Table:
         self.table_id = None
         self.caption_text = ""
         self.legend_text = ""
+        self.table_data_start_row_index = None
+        self.table_data_start_col_index = 0
         self.df = None
+        self.cell_info_dict = dict()
         self.statements = []
 
     def parse_xml(self, table_item, verbose=False):
@@ -95,6 +98,17 @@ class Table:
                 if min_col_id is None:
                     min_col_id = cur_col_id
 
+                doc_cell = self.nlp_process_obj.construct_doc(text=cell_text)
+                if cur_row_id not in self.cell_info_dict:
+                    self.cell_info_dict[cur_row_id] = dict()
+                self.cell_info_dict[cur_row_id][cur_col_id] = []
+                for token in doc_cell:
+                    token_obj = Token(text=token.text, lemma=token.lemma_, normalized_text=token.norm_,
+                                      part_of_speech_coarse=token.pos_, part_of_speech_fine_grained=token.tag_,
+                                      dependency_tag=token.dep_, head_index=token.head.i,
+                                      children_index_arr=[child.i for child in token.children])
+                    self.cell_info_dict[cur_row_id][cur_col_id].append(token_obj)
+
         # identify the row from which table data starts
         # TODO Handle the table with row index. In this case column header is absent corresponding to the column mentioning row index.
         table_data_row_id = None
@@ -129,6 +143,7 @@ class Table:
         assert table_data_row_id is not None, "table_data_row_id not set"
         assert table_data_row_id <= max_row_id, "table_data_row_id: {} > max_row_id: {}".format(table_data_row_id,
                                                                                                 max_row_id)
+        self.table_data_start_row_index = table_data_row_id
 
         if verbose:
             print("\nCount: rows: {} :: cols: {}".format(max_row_id + 1, max_col_id + 1))
@@ -293,22 +308,44 @@ class Table:
             if columns_matched:
                 self.statements[stmnt_i].columns_matched = columns_matched
 
+            # iterate over the table cell rows which correspond to the data i.e. excluding rows corresponding to the column headers
             rows_matched = []
-            for row_name in self.df[column_names[0]]:
-                start_pos_arr = [i for i in range(len(statement_text_lower)) if
-                                 statement_text_lower.startswith(row_name.lower(), i)]
-                flag_row_matched = False
-                for start_pos in start_pos_arr:
-                    if start_pos > 0 and statement_text_lower[start_pos - 1] != " ":
-                        continue
-                    end_pos = start_pos + len(row_name)
-                    if end_pos < len(statement_text_lower) and statement_text_lower[end_pos] != " ":
-                        continue
+            for row_index in range(self.table_data_start_row_index, len(self.df)):
+                if row_index not in self.cell_info_dict:
+                    continue
+                col_index = 0
+                if col_index not in self.cell_info_dict[row_index]:
+                    continue
+                for token_index_stmnt in range(len(self.statements[stmnt_i].tokens) - len(self.cell_info_dict[row_index][col_index]) + 1):
+                    token_i = 0
                     flag_row_matched = True
+                    while token_i < len(self.cell_info_dict[row_index][col_index]):
+                        if self.statements[stmnt_i].tokens[token_index_stmnt+token_i].text.lower() != \
+                                self.cell_info_dict[row_index][col_index][token_i].text.lower():
+                            flag_row_matched = False
+                            break
+                        token_i += 1
 
-                if flag_row_matched:
-                    rows_matched.append(row_name)
-                    print("\tRow matched: {}".format(row_name))
+                    if flag_row_matched:
+                        row_name = self.df[column_names[0]][row_index-self.table_data_start_row_index]
+                        print("\tRow matched: {}".format(row_name))
+
+            if False:
+                for row_name in self.df[column_names[0]]:
+                    start_pos_arr = [i for i in range(len(statement_text_lower)) if
+                                     statement_text_lower.startswith(row_name.lower(), i)]
+                    flag_row_matched = False
+                    for start_pos in start_pos_arr:
+                        if start_pos > 0 and statement_text_lower[start_pos - 1] != " ":
+                            continue
+                        end_pos = start_pos + len(row_name)
+                        if end_pos < len(statement_text_lower) and statement_text_lower[end_pos] != " ":
+                            continue
+                        flag_row_matched = True
+
+                    if flag_row_matched:
+                        rows_matched.append(row_name)
+                        print("\tRow matched: {}".format(row_name))
 
             m = re.search(r'(\bhighest\b|\bgreatest\b|\blowest\b)', self.statements[stmnt_i].text, flags=re.I)
             if m:
