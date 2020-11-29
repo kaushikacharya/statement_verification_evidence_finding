@@ -250,7 +250,7 @@ class Table:
 
                 if verbose:
                     for token in doc_statement:
-                        print("\ttoken: text: {} :: lemma: {} :: norm: {} :: POS: {} :: tag: {} :: dep: {}".format(token.text, token.lemma_, token.norm_, token.pos_, token.tag_, token.dep_))
+                        print("\ttoken: #{} :: text: {} :: lemma: {} :: norm: {} :: POS: {} :: tag: {} :: dep: {}".format(token.i, token.text, token.lemma_, token.norm_, token.pos_, token.tag_, token.dep_))
 
                 if verbose:
                     svg = displacy.render(doc_statement, style="dep")
@@ -264,8 +264,10 @@ class Table:
                 self.statements.append(statement_obj)
 
     def process_table(self, verbose=False):
+        """
         if isinstance(self.df.columns, pd.MultiIndex):
             return
+        """
         column_names = [x for x in self.df.columns if x]
         if len(column_names) == 0:
             return
@@ -288,25 +290,53 @@ class Table:
                 if len(columns_matched) > 0:
                     print("\tColumns matched: {}".format(columns_matched))
 
-            statement_text_lower = self.statements[stmnt_i].text.lower()
+            if False:
+                statement_text_lower = self.statements[stmnt_i].text.lower()
+                columns_matched = []
+                for column_name in column_names:
+                    start_pos_arr = [i for i in range(len(statement_text_lower)) if statement_text_lower.startswith(column_name.lower(), i)]
+                    flag_column_matched = False
+                    for start_pos in start_pos_arr:
+                        if start_pos > 0 and statement_text_lower[start_pos-1] != " ":
+                            continue
+                        end_pos = start_pos + len(column_name)
+                        if end_pos < len(statement_text_lower) and statement_text_lower[end_pos] != " ":
+                            continue
+                        flag_column_matched = True
+
+                    if flag_column_matched:
+                        columns_matched.append(column_name)
+                        print("\tColumn matched: {}".format(column_name))
+
+                if columns_matched:
+                    self.statements[stmnt_i].columns_matched = columns_matched
+
+            # iterate over the table cell corresponding to the column headers
             columns_matched = []
-            for column_name in column_names:
-                start_pos_arr = [i for i in range(len(statement_text_lower)) if statement_text_lower.startswith(column_name.lower(), i)]
-                flag_column_matched = False
-                for start_pos in start_pos_arr:
-                    if start_pos > 0 and statement_text_lower[start_pos-1] != " ":
+            for row_index in range(self.table_data_start_row_index):
+                if row_index not in self.cell_info_dict:
+                    continue
+                for col_index in range(len(self.df.columns)):
+                    if col_index not in self.cell_info_dict[row_index]:
                         continue
-                    end_pos = start_pos + len(column_name)
-                    if end_pos < len(statement_text_lower) and statement_text_lower[end_pos] != " ":
-                        continue
-                    flag_column_matched = True
+                    for token_index_stmnt in range(len(self.statements[stmnt_i].tokens) - len(
+                            self.cell_info_dict[row_index][col_index]) + 1):
+                        token_i = 0
+                        flag_col_cell_matched = True
+                        while token_i < len(self.cell_info_dict[row_index][col_index]):
+                            if (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].text.lower() !=
+                                    self.cell_info_dict[row_index][col_index][token_i].text.lower()) and \
+                                    (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].lemma.lower() !=
+                                         self.cell_info_dict[row_index][col_index][token_i].lemma.lower()):
+                                flag_col_cell_matched = False
+                                break
+                            token_i += 1
 
-                if flag_column_matched:
-                    columns_matched.append(column_name)
-                    print("\tColumn matched: {}".format(column_name))
-
-            if columns_matched:
-                self.statements[stmnt_i].columns_matched = columns_matched
+                        if flag_col_cell_matched:
+                            col_info = (col_index, token_index_stmnt, token_index_stmnt+token_i)
+                            columns_matched.append(col_info)
+                            col_cell_text = " ".join([x.text for x in self.cell_info_dict[row_index][col_index]])
+                            print("\tColumn cell matched: name: {} :: col info: {}".format(col_cell_text, col_info))
 
             # iterate over the table cell rows which correspond to the data i.e. excluding rows corresponding to the column headers
             rows_matched = []
@@ -327,8 +357,10 @@ class Table:
                         token_i += 1
 
                     if flag_row_matched:
+                        row_info = (row_index, token_index_stmnt, token_index_stmnt+token_i)
+                        rows_matched.append(row_info)
                         row_name = self.df[column_names[0]][row_index-self.table_data_start_row_index]
-                        print("\tRow matched: {}".format(row_name))
+                        print("\tRow matched: name: {} :: row info: {}".format(row_name, row_info))
 
             if False:
                 for row_name in self.df[column_names[0]]:
@@ -346,6 +378,25 @@ class Table:
                     if flag_row_matched:
                         rows_matched.append(row_name)
                         print("\tRow matched: {}".format(row_name))
+
+            # extract numeric cell value
+            if len(columns_matched) == 1 and len(rows_matched) == 1:
+                for token_index_stmnt in range(len(self.statements[stmnt_i].tokens)):
+                    cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
+                    if cur_token.part_of_speech_coarse == "NUM":
+                        # consider only if its not part of the statement tokens matching the column, row
+                        if token_index_stmnt in range(columns_matched[0][1], columns_matched[0][2]):
+                            continue
+                        if token_index_stmnt in range(rows_matched[0][1], rows_matched[0][2]):
+                            continue
+                        col_index = columns_matched[0][0]
+                        row_index = rows_matched[0][0]
+                        column_name = self.df.columns[col_index]
+                        cell_value = self.df.loc[row_index-self.table_data_start_row_index, column_name]
+                        _, statement_token_value = is_number(cur_token.text)
+                        flag_match = cell_value == statement_token_value
+                        if verbose:
+                            print("\tNumeric value: cell: {} :: statement: {} :: match: {}".format(cell_value, cur_token.text, flag_match))
 
             m = re.search(r'(\bhighest\b|\bgreatest\b|\blowest\b)', self.statements[stmnt_i].text, flags=re.I)
             if m:

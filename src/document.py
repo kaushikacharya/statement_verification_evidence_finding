@@ -22,7 +22,7 @@ pd.set_option("display.max_columns", 20)
 
 def create_valid_xml(xml_text):
     """Convert xml into a valid xml.
-        N.B. This refers to data version: v1. In the next version v1.2, data is a valid xml format.
+        N.B. This refers to data version: v1. In the next version v1.1, data is a valid xml format.
         XML provided as part of Shared Task crashes while parsing by ElementTree.
         Following two changes are done:
         1. <Table table_id> => <Table id="table_id">
@@ -119,7 +119,7 @@ class Document:
             try:
                 table_obj = Table(doc_id=self.doc_id, nlp_process_obj=self.nlp_process_obj)
                 table_obj.parse_xml(table_item=table_item, verbose=verbose)
-                table_obj.process_table()
+                table_obj.process_table(verbose=verbose)
                 n_statements_doc += len(table_obj.statements)
                 n_tables_doc += 1
                 for stmnt_i in range(len(table_obj.statements)):
