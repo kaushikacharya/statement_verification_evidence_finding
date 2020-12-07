@@ -44,7 +44,12 @@ class Table:
         self.legend_text = ""
         self.table_data_start_row_index = None
         self.table_data_start_col_index = 0
+        # Though `df` currently stores columns starting from 0, but column headers prior to `table_min_col_index' are None.
+        self.table_min_col_index = None
+        # dataframe to store table.
+        #   Rows of indices in range(self.table_data_start_row_index) populates column headers.
         self.df = None
+        # dict of dict: keys: [row_index][col_index],  values: list of Token
         self.cell_info_dict = dict()
         self.statements = []
 
@@ -69,7 +74,9 @@ class Table:
         if legend:
             self.legend_text = re.sub(r"\s+", " ", legend.attrib['text'])
 
-        # iterate over the rows to identify column range and row range
+        # Iterate over the rows to
+        #   a) identify column range and row range
+        #   b) populate cell_info_dict
         # This helps in identifying empty columns at the end which can be skipped while forming the dataframe
         max_row_id = -1
         max_col_id = -1
@@ -98,10 +105,11 @@ class Table:
                 if min_col_id is None:
                     min_col_id = cur_col_id
 
-                doc_cell = self.nlp_process_obj.construct_doc(text=cell_text)
                 if cur_row_id not in self.cell_info_dict:
                     self.cell_info_dict[cur_row_id] = dict()
                 self.cell_info_dict[cur_row_id][cur_col_id] = []
+
+                doc_cell = self.nlp_process_obj.construct_doc(text=cell_text)
                 for token in doc_cell:
                     token_obj = Token(text=token.text, lemma=token.lemma_, normalized_text=token.norm_,
                                       part_of_speech_coarse=token.pos_, part_of_speech_fine_grained=token.tag_,
@@ -109,7 +117,11 @@ class Table:
                                       children_index_arr=[child.i for child in token.children])
                     self.cell_info_dict[cur_row_id][cur_col_id].append(token_obj)
 
-        # identify the row from which table data starts
+        assert min_col_id is not None, "min_col_id is not assigned"
+        self.table_min_col_index = min_col_id
+
+        # Identify the row from which table data starts
+        # The rows prior to that will populate column headers of `df`
         # TODO Handle the table with row index. In this case column header is absent corresponding to the column mentioning row index.
         table_data_row_id = None
         empty_col_set = set(range(min_col_id, max_col_id + 1))
@@ -136,6 +148,8 @@ class Table:
                 # case: Empty columns in-between columns with data filled
                 #   Re-process above code segment to identify from which row table data starts
                 #   e.g. document# 20690
+                #   In 2nd iteration these internal empty columns are not processed for the purpose of identifying
+                #       row from which table data starts.
                 # TODO Store these columns as they might be useful in identifying nested column headers
                 # TODO Also these empty columns could be a signal of range for nested column headers.
                 empty_col_set = set(range(min_col_id, max_col_id + 1)).difference(empty_col_set)
@@ -147,10 +161,10 @@ class Table:
 
         if verbose:
             print("\nCount: rows: {} :: cols: {}".format(max_row_id + 1, max_col_id + 1))
-            print("Header row range: ({},{}) :: data row range: ({},{})".format(0, table_data_row_id,
-                                                                                table_data_row_id,
-                                                                                max_row_id + 1))
+            print("Header row range: ({},{}) :: data row range: ({},{})".format(0, table_data_row_id, table_data_row_id, max_row_id + 1)) #noqa
+
         # Populate table dataframe
+        # ?? Are we not going to use min_col_id
         table_header = []
         table_data = []  # list of list
         for row in table_item.findall("row"):
@@ -264,13 +278,14 @@ class Table:
                 self.statements.append(statement_obj)
 
     def process_table(self, verbose=False):
-        """
-        if isinstance(self.df.columns, pd.MultiIndex):
-            return
-        """
-        column_names = [x for x in self.df.columns if x]
-        if len(column_names) == 0:
-            return
+
+        if False:
+            if isinstance(self.df.columns, pd.MultiIndex):
+                return
+
+            column_names = [x for x in self.df.columns if x]
+            if len(column_names) == 0:
+                return
 
         # regex pattern to search for column names
         # N.B. Fails when words have alphanumeric characters. e.g. Column: Pmid [m]   20856.xml
@@ -312,13 +327,16 @@ class Table:
                     self.statements[stmnt_i].columns_matched = columns_matched
 
             # iterate over the table cell corresponding to the column headers
-            columns_matched = []
+            # columns_matched = []
+            flag_col_matched_arr = [None for i in range(len(self.df.columns))]
+            column_matched_tokens_dict = dict()
             for row_index in range(self.table_data_start_row_index):
                 if row_index not in self.cell_info_dict:
                     continue
                 for col_index in range(len(self.df.columns)):
                     if col_index not in self.cell_info_dict[row_index]:
                         continue
+                    cur_column_matched_tokens_dict = dict()
                     for token_index_stmnt in range(len(self.statements[stmnt_i].tokens) - len(
                             self.cell_info_dict[row_index][col_index]) + 1):
                         token_i = 0
@@ -333,10 +351,37 @@ class Table:
                             token_i += 1
 
                         if flag_col_cell_matched:
+                            if 'token_index_range_statement' not in cur_column_matched_tokens_dict:
+                                cur_column_matched_tokens_dict['token_index_range_statement'] = []
+                            cur_column_matched_tokens_dict['token_index_range_statement'].append((token_index_stmnt, token_index_stmnt+token_i))
+
                             col_info = (col_index, token_index_stmnt, token_index_stmnt+token_i)
-                            columns_matched.append(col_info)
+                            # columns_matched.append(col_info)
                             col_cell_text = " ".join([x.text for x in self.cell_info_dict[row_index][col_index]])
-                            print("\tColumn cell matched: name: {} :: col info: {}".format(col_cell_text, col_info))
+                            if verbose:
+                                print("\tColumn cell matched: name: {} :: col info: {}".format(col_cell_text, col_info))
+
+                    if len(cur_column_matched_tokens_dict) > 0:
+                        if flag_col_matched_arr[col_index] is False:
+                            # Column failed to match in one of the previous column header row(s).
+                            pass
+                        else:
+                            if flag_col_matched_arr[col_index] is None:
+                                flag_col_matched_arr[col_index] = True
+
+                            if col_index not in column_matched_tokens_dict:
+                                column_matched_tokens_dict[col_index] = []
+                            column_matched_tokens_dict[col_index].extend(cur_column_matched_tokens_dict['token_index_range_statement'])
+                    else:
+                        flag_col_matched_arr[col_index] = False
+                        # remove if it was added in any of the previous column header row
+                        if col_index in column_matched_tokens_dict:
+                            column_matched_tokens_dict.pop(col_index)
+
+            if verbose:
+                col_matched_arr = [self.df.columns[i] for i in range(len(flag_col_matched_arr)) if flag_col_matched_arr[i]]
+                if len(col_matched_arr) > 0:
+                    print("\tColumns matched: {}".format(col_matched_arr))
 
             # iterate over the table cell rows which correspond to the data i.e. excluding rows corresponding to the column headers
             rows_matched = []
@@ -359,8 +404,9 @@ class Table:
                     if flag_row_matched:
                         row_info = (row_index, token_index_stmnt, token_index_stmnt+token_i)
                         rows_matched.append(row_info)
-                        row_name = self.df[column_names[0]][row_index-self.table_data_start_row_index]
-                        print("\tRow matched: name: {} :: row info: {}".format(row_name, row_info))
+                        row_name = self.df[self.df.columns[0]][row_index-self.table_data_start_row_index]
+                        if verbose:
+                            print("\tRow matched: name: {} :: row info: {}".format(row_name, row_info))
 
             if False:
                 for row_name in self.df[column_names[0]]:
@@ -380,16 +426,21 @@ class Table:
                         print("\tRow matched: {}".format(row_name))
 
             # extract numeric cell value
-            if len(columns_matched) == 1 and len(rows_matched) == 1:
+            if len(column_matched_tokens_dict) == 1 and len(rows_matched) == 1:
                 for token_index_stmnt in range(len(self.statements[stmnt_i].tokens)):
                     cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
                     if cur_token.part_of_speech_coarse == "NUM":
                         # consider only if its not part of the statement tokens matching the column, row
-                        if token_index_stmnt in range(columns_matched[0][1], columns_matched[0][2]):
+                        col_index = list(column_matched_tokens_dict.keys())[0]
+                        flag_stmnt_token_belongs_to_column = False
+                        for token_index_start_column, token_index_end_column in column_matched_tokens_dict[col_index]:
+                            if token_index_stmnt in range(token_index_start_column, token_index_end_column):
+                                flag_stmnt_token_belongs_to_column = True
+                                break
+                        if flag_stmnt_token_belongs_to_column:
                             continue
                         if token_index_stmnt in range(rows_matched[0][1], rows_matched[0][2]):
                             continue
-                        col_index = columns_matched[0][0]
                         row_index = rows_matched[0][0]
                         column_name = self.df.columns[col_index]
                         cell_value = self.df.loc[row_index-self.table_data_start_row_index, column_name]
