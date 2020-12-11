@@ -26,7 +26,7 @@ def read_xml(filename, type="prediction"):
     ''' Read xml file and convert to solution dicts '''
 
     result_dict = {}
-    content = open(filename).read()
+    content = open(filename, encoding="utf-8").read()
     soup = BeautifulSoup(content, "lxml")
     for table in soup.find_all("table"):
         result_dict[table["id"]] = {}
@@ -97,6 +97,7 @@ if os.path.isdir(submit_dir) and os.path.isdir(truth_dir):
 
     task_b_missing_flag = False
     for i, solution_file in enumerate(solution_names):
+        print(solution_file)
         scores_task_a_2way_list_file = []
         scores_task_a_3way_list_file = []
         scores_task_b_f1_file = []
@@ -186,7 +187,7 @@ if os.path.isdir(submit_dir) and os.path.isdir(truth_dir):
         scores_task_a_2way_list += scores_task_a_2way_list_file
         scores_task_a_3way_list += scores_task_a_3way_list_file
         scores_task_b_f1 += scores_task_b_f1_file
-        print(solution_file)
+        # print(solution_file)
         print("task_a_2way_f1_total: %f " % (np.mean(scores_task_a_2way_list_file)))
         print("task_a_3way_f1_total: %f " % (np.mean(scores_task_a_3way_list_file)))
         if len(scores_task_b_f1_file) > 0:
