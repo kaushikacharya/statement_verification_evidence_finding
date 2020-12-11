@@ -20,16 +20,32 @@ class Dataset:
     def __init__(self, nlp_process_obj):
         self.nlp_process_obj = nlp_process_obj
 
-    def process_data_dir(self, data_dir):
+    def process_data_dir(self, data_dir, submit_dir=None):
         failed_tables_dataset = []
         n_tables_dataset = 0
         n_statements_dataset = 0
         n_statements_with_column_matched_dataset = 0
         n_files = 0
+
+        if submit_dir and not os.path.exists(submit_dir):
+            os.makedirs(submit_dir)
+
         for xml_file_path in glob.iglob(os.path.join(data_dir, "*.xml")):
             print("\n{}".format(xml_file_path))
             doc_obj = Document(nlp_process_obj=self.nlp_process_obj)
-            failed_tables_doc, n_tables_doc, n_statements_doc, n_statements_with_column_matched_doc = doc_obj.parse_xml(xml_file=xml_file_path, verbose=False)
+            doc_output_dict = doc_obj.parse_xml(xml_file=xml_file_path, verbose=False)
+
+            failed_tables_doc = doc_output_dict["failed_tables_doc"]
+            n_tables_doc = doc_output_dict["n_tables_doc"]
+            n_statements_doc = doc_output_dict["n_statements_doc"]
+            n_statements_with_column_matched_doc = doc_output_dict["n_statements_with_column_matched_doc"]
+            doc_output_tree = doc_output_dict["doc_output_tree"]
+
+            if submit_dir:
+                submit_filepath = os.path.join(submit_dir, os.path.basename(xml_file_path))
+                with io.open(file=submit_filepath, mode="wb") as fd:
+                    doc_output_tree.write(fd)
+
             if len(failed_tables_doc) > 0:
                 failed_tables_dataset.append({os.path.basename(xml_file_path): failed_tables_doc})
             n_tables_dataset += n_tables_doc
@@ -44,12 +60,17 @@ def main(args):
     nlp_process_obj = NLPProcess()
     nlp_process_obj.load_nlp_model(True)
     dataset_obj = Dataset(nlp_process_obj=nlp_process_obj)
-    dataset_obj.process_data_dir(data_dir=args.data_dir)
+    if args.submit_dir == "None":
+        submit_dir = None
+    else:
+        submit_dir = args.submit_dir
+    dataset_obj.process_data_dir(data_dir=args.data_dir, submit_dir=submit_dir)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", action="store",
-                        default="C:/KA/data/NLP/statement_verification_evidence_finding/v1.2/output/", dest="data_dir")
+                        default="C:/KA/data/NLP/statement_verification_evidence_finding/v1.2/ref/", dest="data_dir")
+    parser.add_argument("--submit_dir", action="store", default=os.path.join(os.path.dirname(__file__), "../output/submit"), dest="submit_dir")
     args = parser.parse_args()
 
     print("args: {}".format(args))

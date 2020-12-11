@@ -111,6 +111,8 @@ class Document:
         n_statements_with_column_matched_doc = 0
         n_tables_doc = 0
 
+        doc_output_elem = ET.Element("document")
+
         # iterate over the tables
         for table_item in root.findall(table_tag):
             if True:
@@ -119,7 +121,8 @@ class Document:
             try:
                 table_obj = Table(doc_id=self.doc_id, nlp_process_obj=self.nlp_process_obj)
                 table_obj.parse_xml(table_item=table_item, verbose=verbose)
-                table_obj.process_table(verbose=verbose)
+                table_output_elem = table_obj.process_table(verbose=verbose)
+                doc_output_elem.append(table_output_elem)
                 n_statements_doc += len(table_obj.statements)
                 n_tables_doc += 1
                 for stmnt_i in range(len(table_obj.statements)):
@@ -130,7 +133,16 @@ class Document:
                 traceback.print_exc()
                 failed_tables.append(table_item.attrib["id"])
 
-        return failed_tables, n_tables_doc, n_statements_doc, n_statements_with_column_matched_doc
+        doc_output_tree = ET.ElementTree(doc_output_elem)
+
+        output_dict = dict()
+        output_dict["failed_tables_doc"] = failed_tables
+        output_dict["n_tables_doc"] = n_tables_doc
+        output_dict["n_statements_doc"] = n_statements_doc
+        output_dict["n_statements_with_column_matched_doc"] = n_statements_with_column_matched_doc
+        output_dict["doc_output_tree"] = doc_output_tree
+
+        return output_dict
 
 
 def main(args):
@@ -138,12 +150,22 @@ def main(args):
     nlp_process_obj = NLPProcess()
     nlp_process_obj.load_nlp_model(verbose=args.verbose)
     doc_obj = Document(nlp_process_obj=nlp_process_obj)
-    doc_obj.parse_xml(xml_file=xml_file, verbose=args.verbose)
+    output_dict = doc_obj.parse_xml(xml_file=xml_file, verbose=args.verbose)
+
+    submit_dir = os.path.join(os.path.dirname(__file__), "../output/submit")
+    if not os.path.exists(submit_dir):
+        os.makedirs(submit_dir)
+
+    doc_output_tree = output_dict["doc_output_tree"]
+    submit_filepath = os.path.join(submit_dir, args.filename)
+    with io.open(file=submit_filepath, mode="wb") as fd:
+        doc_output_tree.write(fd)
+
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir", action="store", default="C:/KA/data/NLP/statement_verification_evidence_finding/v1.2/output/", dest="data_dir")
+    parser.add_argument("--data_dir", action="store", default="C:/KA/data/NLP/statement_verification_evidence_finding/v1.2/ref/", dest="data_dir")
     parser.add_argument("--filename", action="store", dest="filename")
     parser.add_argument("--verbose", action="store_true", default=False, dest="verbose")
     args = parser.parse_args()

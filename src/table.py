@@ -3,6 +3,7 @@
 import os
 import pandas as pd
 import re
+import xml.etree.ElementTree as ET
 
 from pandas.api.types import is_numeric_dtype
 from spacy import displacy
@@ -155,6 +156,9 @@ class Table:
                 empty_col_set = set(range(min_col_id, max_col_id + 1)).difference(empty_col_set)
 
         assert table_data_row_id is not None, "table_data_row_id not set"
+        # Hack to avoid crash
+        if table_data_row_id > max_row_id:
+            table_data_row_id = max_row_id
         assert table_data_row_id <= max_row_id, "table_data_row_id: {} > max_row_id: {}".format(table_data_row_id,
                                                                                                 max_row_id)
         self.table_data_start_row_index = table_data_row_id
@@ -225,10 +229,19 @@ class Table:
             print(table_df)
             print("Column dtypes:\n{}".format(table_df.dtypes))
             # Identify columns having numeric data type
+            # N.B. It's better to refer columns by index rather than its name.
+            #       In case of duplicate column names, it selects `DataFrame` instead of `Series`.
+            #       This leads to either of
+            #           a) TypeError: Level type mismatch: nan (in case on None column headers
+            #           b) False return by is_numeric_dtype() since the function expects array like object and not dataframe.
             numeric_columns = []
-            for col_name in table_df.columns:
-                if is_numeric_dtype(table_df[col_name]):
-                    numeric_columns.append(col_name)
+            for col_i, col_name in enumerate(table_df.columns):
+                if is_numeric_dtype(table_df.iloc[:, col_i]):
+                    numeric_columns.append((col_i, col_name))
+            if False:
+                for col_name in table_df.columns:
+                    if is_numeric_dtype(table_df[col_name]):
+                        numeric_columns.append(col_name)
             if len(numeric_columns):
                 print("Numeric columns: {}".format(numeric_columns))
 
@@ -297,8 +310,14 @@ class Table:
                 regex_pattern += r'\b{}\b'.format(column_name)
             regex_pattern += r')'
 
+        table_output_elem = ET.Element("table")
+        table_output_elem.set("id", self.table_id)
+        statements_output_elem = ET.Element("statements")
+        table_output_elem.append(statements_output_elem)
+
         for stmnt_i in range(len(self.statements)):
-            print("Statement #{} :: id: {}".format(stmnt_i, self.statements[stmnt_i].id))
+            if verbose:
+                print("Statement #{} :: id: {}".format(stmnt_i, self.statements[stmnt_i].id))
             # Identify columns in statement
             if False:
                 columns_matched = re.findall(pattern=regex_pattern, string=self.statements[stmnt_i].text, flags=re.I)
@@ -386,6 +405,7 @@ class Table:
             # iterate over the table cell rows which correspond to the data i.e. excluding rows corresponding to the column headers
             rows_matched = []
             for row_index in range(self.table_data_start_row_index, len(self.df)):
+                # N.B. row_index refers to table row. For row of dataframe, we need to offset by table_data_start_row_index
                 if row_index not in self.cell_info_dict:
                     continue
                 col_index = 0
@@ -404,7 +424,8 @@ class Table:
                     if flag_row_matched:
                         row_info = (row_index, token_index_stmnt, token_index_stmnt+token_i)
                         rows_matched.append(row_info)
-                        row_name = self.df[self.df.columns[0]][row_index-self.table_data_start_row_index]
+                        row_name = self.df.iloc[row_index-self.table_data_start_row_index, col_index]
+                        # row_name = self.df[self.df.columns[0]][row_index-self.table_data_start_row_index]
                         if verbose:
                             print("\tRow matched: name: {} :: row info: {}".format(row_name, row_info))
 
@@ -426,6 +447,7 @@ class Table:
                         print("\tRow matched: {}".format(row_name))
 
             # extract numeric cell value
+            statement_type_predict = "unknown"
             if len(column_matched_tokens_dict) == 1 and len(rows_matched) == 1:
                 for token_index_stmnt in range(len(self.statements[stmnt_i].tokens)):
                     cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
@@ -442,13 +464,26 @@ class Table:
                         if token_index_stmnt in range(rows_matched[0][1], rows_matched[0][2]):
                             continue
                         row_index = rows_matched[0][0]
-                        column_name = self.df.columns[col_index]
-                        cell_value = self.df.loc[row_index-self.table_data_start_row_index, column_name]
+                        if False:
+                            column_name = self.df.columns[col_index]
+                            cell_value = self.df.loc[row_index-self.table_data_start_row_index, column_name]
+                        cell_value = self.df.iloc[row_index-self.table_data_start_row_index, col_index]
                         _, statement_token_value = is_number(cur_token.text)
                         flag_match = cell_value == statement_token_value
+                        if flag_match:
+                            statement_type_predict = "entailed"
+                        else:
+                            statement_type_predict = "refuted"
                         if verbose:
                             print("\tNumeric value: cell: {} :: statement: {} :: match: {}".format(cell_value, cur_token.text, flag_match))
 
             m = re.search(r'(\bhighest\b|\bgreatest\b|\blowest\b)', self.statements[stmnt_i].text, flags=re.I)
             if m:
                 print("\t{}".format(m.group(0)))
+
+            statement_output_elem = ET.SubElement(statements_output_elem, "statement")
+            statement_output_elem.set("id", self.statements[stmnt_i].id)
+            # statement_output_elem.set("text", self.statements[stmnt_i].text)
+            statement_output_elem.set("type", statement_type_predict)
+
+        return table_output_elem
