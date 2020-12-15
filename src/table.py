@@ -44,11 +44,13 @@ class Table:
         self.caption_text = ""
         self.legend_text = ""
         self.table_data_start_row_index = None
+        self.table_data_end_row_index = None
         self.table_data_start_col_index = 0
         # Though `df` currently stores columns starting from 0, but column headers prior to `table_min_col_index' are None.
         self.table_min_col_index = None
         # dataframe to store table.
-        #   Rows of indices in range(self.table_data_start_row_index) populates column headers.
+        #   Table row indices in range (0, self.table_data_start_row_index) represents column headers.
+        #   Table row indices in range (self.table_data_start_row_index, self.table_data_end_row_index) represents values.
         self.df = None
         # dict of dict: keys: [row_index][col_index],  values: list of Token
         self.cell_info_dict = dict()
@@ -162,6 +164,7 @@ class Table:
         assert table_data_row_id <= max_row_id, "table_data_row_id: {} > max_row_id: {}".format(table_data_row_id,
                                                                                                 max_row_id)
         self.table_data_start_row_index = table_data_row_id
+        self.table_data_end_row_index = max_row_id + 1
 
         if verbose:
             print("\nCount: rows: {} :: cols: {}".format(max_row_id + 1, max_col_id + 1))
@@ -404,7 +407,7 @@ class Table:
 
             # iterate over the table cell rows which correspond to the data i.e. excluding rows corresponding to the column headers
             rows_matched = []
-            for row_index in range(self.table_data_start_row_index, len(self.df)):
+            for row_index in range(self.table_data_start_row_index, self.table_data_end_row_index):
                 # N.B. row_index refers to table row. For row of dataframe, we need to offset by table_data_start_row_index
                 if row_index not in self.cell_info_dict:
                     continue
