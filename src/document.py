@@ -22,7 +22,7 @@ pd.set_option("display.max_columns", 20)
 
 def create_valid_xml(xml_text):
     """Convert xml into a valid xml.
-        N.B. This refers to data version: v1. In the next version v1.1, data is a valid xml format.
+        N.B. This refers to data version: v1. In the next version v1.1, data is in valid xml format.
         XML provided as part of Shared Task crashes while parsing by ElementTree.
         Following two changes are done:
         1. <Table table_id> => <Table id="table_id">
@@ -77,7 +77,7 @@ class Document:
         self.doc_id = None
         self.nlp_process_obj = nlp_process_obj
 
-    def parse_xml(self, xml_file, table_tag="table", flag_modify_xml=False, verbose=False):
+    def parse_xml(self, xml_file, table_tag="table", flag_modify_xml=False, flag_cell_span=True, verbose=False):
         """Parse xml of the document.
 
             Parameters
@@ -85,6 +85,7 @@ class Document:
             xml_file : filepath (XML document file path)
             table_tag : str (For v1 its "Table")
             flag_modify_xml : bool (True only for data version v1)
+            flag_cell_span : bool (True from data version 1.3 onwards)
             verbose : bool
         """
         assert os.path.exists(xml_file), "XML file; {} NOT found".format(xml_file)
@@ -120,7 +121,7 @@ class Document:
 
             try:
                 table_obj = Table(doc_id=self.doc_id, nlp_process_obj=self.nlp_process_obj)
-                table_obj.parse_xml(table_item=table_item, verbose=verbose)
+                table_obj.parse_xml(table_item=table_item, flag_cell_span=flag_cell_span, verbose=verbose)
                 table_output_elem = table_obj.process_table(verbose=verbose)
                 doc_output_elem.append(table_output_elem)
                 n_statements_doc += len(table_obj.statements)
@@ -150,7 +151,7 @@ def main(args):
     nlp_process_obj = NLPProcess()
     nlp_process_obj.load_nlp_model(verbose=args.verbose)
     doc_obj = Document(nlp_process_obj=nlp_process_obj)
-    output_dict = doc_obj.parse_xml(xml_file=xml_file, verbose=args.verbose)
+    output_dict = doc_obj.parse_xml(xml_file=xml_file, flag_cell_span=args.flag_cell_span, verbose=args.verbose)
 
     submit_dir = os.path.join(os.path.dirname(__file__), "../output/submit")
     if not os.path.exists(submit_dir):
@@ -165,8 +166,10 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir", action="store", default="C:/KA/data/NLP/statement_verification_evidence_finding/v1.2/ref/", dest="data_dir")
+    parser.add_argument("--data_dir", action="store", default="C:/KA/data/NLP/statement_verification_evidence_finding/train_manual_v1.3.2/v1.3.2/ref/", dest="data_dir")
     parser.add_argument("--filename", action="store", dest="filename")
+    parser.add_argument("--flag_cell_span", action="store_true", default=False, dest="flag_cell_span",
+                        help="bool to indicate whether row, col span is mentioned for each cell. data version 1.3 introduces span.")
     parser.add_argument("--verbose", action="store_true", default=False, dest="verbose")
     args = parser.parse_args()
 

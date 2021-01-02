@@ -57,12 +57,13 @@ class Table:
         self.cell_info_dict = dict()
         self.statements = []
 
-    def parse_xml(self, table_item, verbose=False):
+    def parse_xml(self, table_item, flag_cell_span=True, verbose=False):
         """Parse table element of xml
 
             Parameters
             ----------
             table_item : table element
+            flag_cell_span : bool
             verbose : bool
         """
 
@@ -86,7 +87,7 @@ class Table:
         max_col_id = -1
         min_col_id = None  # represents the start column of headers
 
-        for row in table_item.findall("row"):
+        for row in table_item.iterfind("row"):
             if verbose:
                 print("row: {}".format(row.attrib["row"]))
             cur_row_id = int(row.attrib["row"])
@@ -94,16 +95,25 @@ class Table:
                 max_row_id = cur_row_id
 
             # iterate over the cells of the row
-            for cell in row.findall("cell"):
-                # Comparing with accompanied html shows additional whitespaces, newlines have been added into cell text of the xml.
+            for cell in row.iterfind("cell"):
+                # Normalizing cell text by removing additional whitespaces, newlines.
+                #  These can be observed by comparing with corresponding html.
                 cell_text = re.sub(r"\s+", " ", cell.attrib["text"])
                 if verbose:
-                    print("\tcol: {} :: text: {}".format(cell.attrib["col"], cell_text))
+                    if flag_cell_span:
+                        print("\tcol range(end inclusive): start: {} : end: {} :: row range(end inclusive): start: {} : end: {} :: text: {}".format(
+                            cell.attrib["col-start"], cell.attrib["col-end"], cell.attrib["row-start"], cell.attrib["row-end"], cell_text))
+                    else:
+                        print("\tcol: {} :: text: {}".format(cell.attrib["col"], cell_text))
                 if cell_text == "":
                     # consider empty text cells as None
                     # e.g. 20661.xml : Last 3 columns have empty text
                     continue
-                cur_col_id = int(cell.attrib["col"])
+
+                if flag_cell_span:
+                    cur_col_id = int(cell.attrib["col-start"])
+                else:
+                    cur_col_id = int(cell.attrib["col"])
                 if cur_col_id > max_col_id:
                     max_col_id = cur_col_id
                 if min_col_id is None:
@@ -130,14 +140,17 @@ class Table:
         table_data_row_id = None
         empty_col_set = set(range(min_col_id, max_col_id + 1))
         for i in range(2):
-            for row in table_item.findall("row"):
+            for row in table_item.iterfind("row"):
                 cur_row_id = int(row.attrib["row"])
 
-                for cell in row.findall("cell"):
+                for cell in row.iterfind("cell"):
                     cell_text = re.sub(r"\s+", " ", cell.attrib["text"])
                     if cell_text == "":
                         continue
-                    cur_col_id = int(cell.attrib["col"])
+                    if flag_cell_span:
+                        cur_col_id = int(cell.attrib["col-start"])
+                    else:
+                        cur_col_id = int(cell.attrib["col"])
                     if cur_col_id in empty_col_set:
                         empty_col_set.remove(cur_col_id)
 
@@ -175,7 +188,7 @@ class Table:
         # ?? Are we not going to use min_col_id
         table_header = []
         table_data = []  # list of list
-        for row in table_item.findall("row"):
+        for row in table_item.iterfind("row"):
             cur_row_id = int(row.attrib["row"])
 
             if cur_row_id < table_data_row_id:
@@ -183,15 +196,19 @@ class Table:
                 prev_col_id = -1
                 prev_col_text = None
                 table_row_header = [None for i in range(max_col_id + 1)]
-                for cell in row.findall("cell"):
+                for cell in row.iterfind("cell"):
                     cell_text = re.sub(r"\s+", " ", cell.attrib["text"])
                     if cell_text == "":
                         continue
 
-                    cur_col_id = int(cell.attrib["col"])
+                    if flag_cell_span:
+                        cur_col_id = int(cell.attrib["col-start"])
+                    else:
+                        cur_col_id = int(cell.attrib["col"])
 
                     # Assign previous column header to the column positions between previous cell and current cell
                     # Represents the case of nested headers. The current column will have sub-columns nested under it in the next row.
+                    # TODO For data version having cell span, we can utilize the span to replace approach used for previous data versions.
                     for col_id in range(prev_col_id + 1, cur_col_id):
                         table_row_header[col_id] = prev_col_text
 
@@ -210,14 +227,17 @@ class Table:
             else:
                 # row represents table data
                 table_row_data = [None for i in range(max_col_id + 1)]
-                for cell in row.findall("cell"):
+                for cell in row.iterfind("cell"):
                     cell_text = re.sub(r"\s+", " ", cell.attrib["text"])
                     if cell_text == "":
                         continue
 
                     _, cell_data = is_number(cell_text)
                     # cell_data = float(cell_text) if is_number(cell_text) else cell_text
-                    cur_col_id = int(cell.attrib["col"])
+                    if flag_cell_span:
+                        cur_col_id = int(cell.attrib["col-start"])
+                    else:
+                        cur_col_id = int(cell.attrib["col"])
                     table_row_data[cur_col_id] = cell_data
 
                 table_data.append(table_row_data)
@@ -258,7 +278,7 @@ class Table:
                 os.makedirs(output_dir)
 
         n_statements = 0
-        for statements in table_item.findall('statements'):
+        for statements in table_item.iterfind('statements'):
             for statement in statements:
                 n_statements += 1
                 # print(statement.tag, type(statement.attrib))
@@ -282,7 +302,8 @@ class Table:
 
                 if verbose:
                     for token in doc_statement:
-                        print("\ttoken: #{} :: text: {} :: lemma: {} :: norm: {} :: POS: {} :: tag: {} :: dep: {}".format(token.i, token.text, token.lemma_, token.norm_, token.pos_, token.tag_, token.dep_))
+                        print("\ttoken: #{} :: text: {} :: lemma: {} :: norm: {} :: POS: {} :: tag: {} :: dep: {}".format(
+                            token.i, token.text, token.lemma_, token.norm_, token.pos_, token.tag_, token.dep_))
 
                 if verbose:
                     svg = displacy.render(doc_statement, style="dep")
