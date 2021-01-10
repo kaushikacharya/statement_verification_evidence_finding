@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 
 from pandas.api.types import is_numeric_dtype
 from spacy import displacy
+from word2number import w2n
 
 from src.utils import *
 
@@ -342,6 +343,9 @@ class Table:
         statements_output_elem = ET.Element("statements")
         table_output_elem.append(statements_output_elem)
 
+        if verbose:
+            print("\n")
+
         for stmnt_i in range(len(self.statements)):
             if verbose:
                 print("Statement #{} :: id: {} :: type(ground truth): {} :: text: {}".format(
@@ -538,8 +542,8 @@ class Table:
                             continue
                         token_index_end_column = column_matched_tokens_dict[col_index][-1][1]
                         if token_index_end_column <= token_i:
-                            min_column_value = min(self.df.iloc[:, col_index])
-                            max_column_value = max(self.df.iloc[:, col_index])
+                            min_column_value = np.nanmin(self.df.iloc[:, col_index])
+                            max_column_value = np.nanmax(self.df.iloc[:, col_index])
                             if (min_range_value == min_column_value) and (max_range_value == max_column_value):
                                 statement_type_predict = "entailed"
                                 if verbose:
@@ -641,8 +645,25 @@ class Table:
                                     else:
                                         statement_type_predict = "refuted"
 
-            # extract numeric cell value
-            if len(column_matched_tokens_dict) == 1 and len(rows_matched) == 1 and statement_type_predict is None:
+            # candidate: uniqueness
+            m = re.search(r'(\bunique\b)', self.statements[stmnt_i].text, flags=re.I)
+
+            if m and verbose:
+                print("\tUniqueness: {}".format(m.group(0)))
+
+            if m and statement_type_predict is None:
+                if len(column_matched_tokens_dict) == 1:
+                    col_index = list(column_matched_tokens_dict.keys())[0]
+
+                    if len(self.df.iloc[:, col_index].unique()) == len(self.df):
+                        statement_type_predict = "entailed"
+                    else:
+                        statement_type_predict = "refuted"
+
+            # candidate: count rows for column
+            if len(column_matched_tokens_dict) == 1 and statement_type_predict is None:
+                col_index = list(column_matched_tokens_dict.keys())[0]
+                n_rows_col = len(self.df.iloc[:, col_index].dropna())
                 for token_index_stmnt in range(len(self.statements[stmnt_i].tokens)):
                     cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
                     if cur_token.part_of_speech_coarse == "NUM":
@@ -656,15 +677,50 @@ class Table:
                                 break
                         if flag_stmnt_token_belongs_to_column:
                             continue
-                        if token_index_stmnt in range(rows_matched[0][1], rows_matched[0][2]):
-                            continue
-                        row_index = rows_matched[0][0]
-                        if False:
-                            column_name = self.df.columns[col_index]
-                            cell_value = self.df.loc[row_index-self.table_data_start_row_index, column_name]
-                        cell_value = self.df.iloc[row_index-self.table_data_start_row_index, col_index]
-                        _, statement_token_value = is_number(cur_token.text)
-                        if is_numeric_dtype(self.df.iloc[:, col_index]):
+                        flag_numeric, statement_token_value = is_number(cur_token.text)
+                        flag_match = None
+                        if flag_numeric:
+                            flag_match = statement_token_value == n_rows_col
+                        else:
+                            # convert word to numeric value
+                            try:
+                                statement_token_value_numeric = w2n.word_to_num(statement_token_value)
+                                flag_match = n_rows_col == statement_token_value_numeric
+                            except:
+                                continue
+
+                        if flag_match is True:
+                            statement_type_predict = "entailed"
+                        elif flag_match is False:
+                            statement_type_predict = "refuted"
+
+                        if verbose:
+                            print("\tNumber of rows for column: {} :: count mentioned in statement: {} :: match: {}".format(n_rows_col, statement_token_value, flag_match))
+
+            # extract numeric cell value
+            if len(column_matched_tokens_dict) == 1 and len(rows_matched) == 1 and statement_type_predict is None:
+                col_index = list(column_matched_tokens_dict.keys())[0]
+                if is_numeric_dtype(self.df.iloc[:, col_index]):
+                    for token_index_stmnt in range(len(self.statements[stmnt_i].tokens)):
+                        cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
+                        if cur_token.part_of_speech_coarse == "NUM":
+                            # consider only if its not part of the statement tokens matching the column, row
+                            flag_stmnt_token_belongs_to_column = False
+                            for token_index_start_column, token_index_end_column in column_matched_tokens_dict[col_index]:
+                                if token_index_stmnt in range(token_index_start_column, token_index_end_column):
+                                    flag_stmnt_token_belongs_to_column = True
+                                    break
+                            if flag_stmnt_token_belongs_to_column:
+                                continue
+                            if token_index_stmnt in range(rows_matched[0][1], rows_matched[0][2]):
+                                continue
+                            row_index = rows_matched[0][0]
+                            if False:
+                                column_name = self.df.columns[col_index]
+                                cell_value = self.df.loc[row_index-self.table_data_start_row_index, column_name]
+                            cell_value = self.df.iloc[row_index-self.table_data_start_row_index, col_index]
+                            _, statement_token_value = is_number(cur_token.text)
+
                             flag_match = cell_value == statement_token_value
                             if flag_match:
                                 statement_type_predict = "entailed"
