@@ -113,6 +113,7 @@ class Document:
         n_tables_doc = 0
 
         doc_output_elem = ET.Element("document")
+        summary_doc = list()
 
         # iterate over the tables
         for table_item in root.findall(table_tag):
@@ -126,13 +127,37 @@ class Document:
                 doc_output_elem.append(table_output_elem)
                 n_statements_doc += len(table_obj.statements)
                 n_tables_doc += 1
+
+                summary_table = dict()
                 for stmnt_i in range(len(table_obj.statements)):
+                    summary_table[table_obj.statements[stmnt_i].id] = \
+                        {'text': table_obj.statements[stmnt_i].text, 'type_ground_truth': table_obj.statements[stmnt_i].type}
                     if table_obj.statements[stmnt_i].columns_matched:
                         n_statements_with_column_matched_doc += 1
+
+
+                for statements_elem in table_output_elem.findall('statements'):
+                    for statement_elem in statements_elem.findall('statement'):
+                        summary_table[statement_elem.get('id')]['type_predicted'] = statement_elem.get('type')
+
+                summary_doc.append({'table_id': table_obj.table_id, 'summary_table': summary_table})
+
             except Exception:
                 print("Failed in table id: {} :: file: {}".format(table_item.attrib["id"], xml_file))
                 traceback.print_exc()
                 failed_tables.append(table_item.attrib["id"])
+
+        if verbose:
+            print("\n------------------Summary--------------------")
+            for table_i in range(len(summary_doc)):
+                summary_table = summary_doc[table_i]['summary_table']
+                print("\nTable: {} :: #statements: {}".format(summary_doc[table_i]['table_id'], len(summary_table)))
+                # display erroneous predictions
+                for statement_id in summary_table:
+                    if summary_table[statement_id]['type_ground_truth'] is not None and \
+                                    summary_table[statement_id]['type_ground_truth'] != summary_table[statement_id]['type_predicted']:
+                        print("\tid: {} :: text: {}".format(statement_id, summary_table[statement_id]['text']))
+                        print("\t\ttype: ground truth: {} :: predicted: {}".format(summary_table[statement_id]['type_ground_truth'], summary_table[statement_id]['type_predicted']))
 
         doc_output_tree = ET.ElementTree(doc_output_elem)
 
