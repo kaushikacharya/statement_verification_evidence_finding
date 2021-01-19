@@ -789,9 +789,37 @@ class Table:
                             print("\tNumber of rows for column: {} :: count mentioned in statement: {} :: match: {}".format(n_rows_col, statement_token_value, flag_match))
 
             # extract numeric cell value
-            if len(column_matched_tokens_dict) == 1 and len(rows_matched) == 1 and statement_type_predict is None:
-                col_index = list(column_matched_tokens_dict.keys())[0]
-                if is_numeric_dtype(self.df.iloc[:, col_index]):
+            if len(rows_matched) == 1 and statement_type_predict is None:
+                numeric_column_index_arr = []
+                non_numeric_column_index_arr = []
+
+                for c_index in sorted(column_matched_tokens_dict.keys()):
+                    if is_numeric_dtype(self.df.iloc[:, c_index]):
+                        numeric_column_index_arr.append(c_index)
+                    else:
+                        non_numeric_column_index_arr.append(c_index)
+
+                col_index = None
+                is_col_numeric = None
+
+                n_candidate_cols = 0
+                n_candidate_cols += len([x for x in numeric_column_index_arr if x > 0])
+                n_candidate_cols += len([x for x in non_numeric_column_index_arr if x > 0])
+
+                if n_candidate_cols == 1:
+                    for c_index in numeric_column_index_arr:
+                        if c_index > 0:
+                            col_index = c_index
+                            is_col_numeric = True
+                            break
+
+                    for c_index in non_numeric_column_index_arr:
+                        if c_index > 0:
+                            col_index = c_index
+                            is_col_numeric = False
+                            break
+
+                if col_index is not None:
                     for token_index_stmnt in range(len(self.statements[stmnt_i].tokens)):
                         cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
                         if cur_token.part_of_speech_coarse == "NUM":
@@ -803,7 +831,9 @@ class Table:
                                     break
                             if flag_stmnt_token_belongs_to_column:
                                 continue
-                            if token_index_stmnt in range(rows_matched[0][1], rows_matched[0][2]):
+                            token_index_start_row = rows_matched[0][1]
+                            token_index_end_row = rows_matched[0][2]
+                            if token_index_stmnt in range(token_index_start_row, token_index_end_row):
                                 continue
                             row_index = rows_matched[0][0]
                             if False:
@@ -811,6 +841,11 @@ class Table:
                                 cell_value = self.df.loc[row_index-self.table_data_start_row_index, column_name]
                             cell_value = self.df.iloc[row_index-self.table_data_start_row_index, col_index]
                             _, statement_token_value = is_number(cur_token.text)
+
+                            if is_col_numeric:
+                                pass
+                            else:
+                                pass
 
                             flag_match = cell_value == statement_token_value
                             if flag_match:
