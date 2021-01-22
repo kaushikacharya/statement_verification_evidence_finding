@@ -73,13 +73,19 @@ class Table:
 
         # extract caption text
         caption = table_item.find('caption')
-        if caption:
+        if caption is not None:
             self.caption_text = re.sub(r"\s+", " ", caption.attrib['text'])
+
+        if verbose and len(self.caption_text) > 0:
+            print("Caption: {}".format(self.caption_text))
 
         # extract legend text
         legend = table_item.find('legend')
-        if legend:
+        if legend is not None:
             self.legend_text = re.sub(r"\s+", " ", legend.attrib['text'])
+
+        if verbose and len(self.legend_text) > 0:
+            print("Legend: {}".format(self.legend_text))
 
         # Iterate over the rows to
         #   a) identify column range and row range
@@ -101,6 +107,7 @@ class Table:
                 # Normalizing cell text by removing additional whitespaces, newlines.
                 #  These can be observed by comparing with corresponding html.
                 cell_text = re.sub(r"\s+", " ", cell.attrib["text"])
+                cell_text = modify_text(cell_text)
                 if verbose:
                     if flag_cell_span:
                         print("\tcol range(end inclusive): start: {} : end: {} :: row range(end inclusive): start: {} : end: {} :: text: {}".format(
@@ -202,6 +209,7 @@ class Table:
                 table_row_header = [None for i in range(max_col_id + 1)]
                 for cell in row.iterfind("cell"):
                     cell_text = re.sub(r"\s+", " ", cell.attrib["text"])
+                    cell_text = modify_text(cell_text)
                     if cell_text == "":
                         continue
 
@@ -233,6 +241,7 @@ class Table:
                 table_row_data = [None for i in range(max_col_id + 1)]
                 for cell in row.iterfind("cell"):
                     cell_text = re.sub(r"\s+", " ", cell.attrib["text"])
+                    cell_text = modify_text(cell_text)
                     if cell_text == "":
                         continue
 
@@ -288,10 +297,11 @@ class Table:
                 # print(statement.tag, type(statement.attrib))
                 statement_id = statement.attrib["id"]
                 statement_text = statement.attrib["text"]
+                statement_text = modify_text(statement_text)
                 statement_type = statement.attrib["type"]
                 doc_statement = self.nlp_process_obj.construct_doc(text=statement_text)
 
-                if True:
+                if verbose:
                     print("Statement: id: {} :: type: {} :: text: {}".format(statement_id, statement_type,
                                                                              statement_text))
 
@@ -497,30 +507,31 @@ class Table:
             # iterate over the table cell rows which correspond to the data i.e. excluding rows corresponding to the column headers
             col_index = 0
             rows_matched = []
-            if not is_numeric_dtype(self.df.iloc[:, col_index]):
-                for row_index in range(self.table_data_start_row_index, self.table_data_end_row_index):
-                    # N.B. row_index refers to table row. For row of dataframe, we need to offset by table_data_start_row_index
-                    if row_index not in self.cell_info_dict:
-                        continue
-                    if col_index not in self.cell_info_dict[row_index]:
-                        continue
-                    for token_index_stmnt in range(len(self.statements[stmnt_i].tokens) - len(self.cell_info_dict[row_index][col_index]) + 1):
-                        token_i = 0
-                        flag_row_matched = True
-                        while token_i < len(self.cell_info_dict[row_index][col_index]):
-                            if self.statements[stmnt_i].tokens[token_index_stmnt+token_i].text.lower() != \
-                                    self.cell_info_dict[row_index][col_index][token_i].text.lower():
-                                flag_row_matched = False
-                                break
-                            token_i += 1
+            # ?? 0th column could be id's (written as int). Do we need to discriminate this with other numeric value?
+            # if not is_numeric_dtype(self.df.iloc[:, col_index]):
+            for row_index in range(self.table_data_start_row_index, self.table_data_end_row_index):
+                # N.B. row_index refers to table row. For row of dataframe, we need to offset by table_data_start_row_index
+                if row_index not in self.cell_info_dict:
+                    continue
+                if col_index not in self.cell_info_dict[row_index]:
+                    continue
+                for token_index_stmnt in range(len(self.statements[stmnt_i].tokens) - len(self.cell_info_dict[row_index][col_index]) + 1):
+                    token_i = 0
+                    flag_row_matched = True
+                    while token_i < len(self.cell_info_dict[row_index][col_index]):
+                        if self.statements[stmnt_i].tokens[token_index_stmnt+token_i].text.lower() != \
+                                self.cell_info_dict[row_index][col_index][token_i].text.lower():
+                            flag_row_matched = False
+                            break
+                        token_i += 1
 
-                        if flag_row_matched:
-                            row_info = (row_index, token_index_stmnt, token_index_stmnt+token_i)
-                            rows_matched.append(row_info)
-                            row_name = self.df.iloc[row_index-self.table_data_start_row_index, col_index]
-                            # row_name = self.df[self.df.columns[0]][row_index-self.table_data_start_row_index]
-                            if verbose:
-                                print("\tRow matched: name: {} :: row info: {}".format(row_name, row_info))
+                    if flag_row_matched:
+                        row_info = (row_index, token_index_stmnt, token_index_stmnt+token_i)
+                        rows_matched.append(row_info)
+                        row_name = self.df.iloc[row_index-self.table_data_start_row_index, col_index]
+                        # row_name = self.df[self.df.columns[0]][row_index-self.table_data_start_row_index]
+                        if verbose:
+                            print("\tRow matched: name: {} :: row info: {}".format(row_name, row_info))
 
             if False:
                 for row_name in self.df[column_names[0]]:
@@ -572,7 +583,7 @@ class Table:
                                         min_column_value, max_column_value, min_range_value, max_range_value))
 
             # candidate: superlative
-            m = re.search(r'(\bhighest\b|\bgreatest\b|\blowest\b)', self.statements[stmnt_i].text,
+            m = re.search(r'(\bhighest\b|\bgreatest\b|\blargest\b|\blowest\b)', self.statements[stmnt_i].text,
                           flags=re.I)
             if m and verbose:
                 print("\tSuperlative: {}".format(m.group(0)))
@@ -597,6 +608,7 @@ class Table:
                     # consider only if its not part of the statement tokens matching the column, row
                     if cur_token.part_of_speech_coarse != "NUM":
                         continue
+
                     flag_stmnt_token_belongs_to_column = False
                     for col_index in column_matched_tokens_dict:
                         for token_index_start_column, token_index_end_column in column_matched_tokens_dict[col_index]:
@@ -613,7 +625,6 @@ class Table:
                     for row_i in range(len(rows_matched)):
                         if token_index_stmnt in range(rows_matched[row_i][1], rows_matched[row_i][2]):
                             flag_stmnt_token_belongs_to_row = True
-                        if flag_stmnt_token_belongs_to_row:
                             break
 
                     if flag_stmnt_token_belongs_to_row:
@@ -626,6 +637,12 @@ class Table:
                 min_column_value_df_row_index = None
                 max_column_value_df_row_index = None
 
+                """
+                Cases:
+                    (a) TODO Both superlative numeric value and corresponding row mentioned in the statement.
+                    (b) Only superlative numeric value mentioned i.e. corresponding row not mentioned.
+                    (c) Only superlative row mentioned i.e. corresponding nummeric value not mentioned.
+                """
                 if numeric_value is not None:
                     if len(numeric_column_index_arr) == 1:
                         col_index = numeric_column_index_arr[0]
@@ -705,16 +722,17 @@ class Table:
             flag_candidate_unique = False
             flag_candidate_vary = False
 
-            for token_index_stmnt in range(len(self.statements[stmnt_i].tokens)):
-                cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
-                if cur_token.lemma.lower() == "unique":
-                    flag_candidate_unique = True
-                    if verbose:
-                        print("\tunique: {}".format(cur_token.text))
-                elif cur_token.lemma.lower() == "vary":
-                    flag_candidate_vary = True
-                    if verbose:
-                        print("\tvary: {}".format(cur_token.text))
+            if len(rows_matched) == 0:
+                for token_index_stmnt in range(len(self.statements[stmnt_i].tokens)):
+                    cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
+                    if cur_token.lemma.lower() in ["different", "unique"]:
+                        flag_candidate_unique = True
+                        if verbose:
+                            print("\tunique: {}".format(cur_token.text))
+                    elif cur_token.lemma.lower() in ["vary", "variation"]:
+                        flag_candidate_vary = True
+                        if verbose:
+                            print("\tvary: {}".format(cur_token.text))
 
             if flag_candidate_unique and statement_type_predict is None:
                 if len(column_matched_tokens_dict) == 1:
@@ -765,6 +783,16 @@ class Table:
                                 break
                         if flag_stmnt_token_belongs_to_column:
                             continue
+
+                        flag_stmnt_token_belongs_to_row = False
+                        for row_i in range(len(rows_matched)):
+                            if token_index_stmnt in range(rows_matched[row_i][1], rows_matched[row_i][2]):
+                                flag_stmnt_token_belongs_to_row = True
+                                break
+
+                        if flag_stmnt_token_belongs_to_row:
+                            continue
+
                         flag_numeric, statement_token_value = is_number(cur_token.text)
                         flag_match = None
                         if flag_numeric:
@@ -788,7 +816,34 @@ class Table:
                         if verbose:
                             print("\tNumber of rows for column: {} :: count mentioned in statement: {} :: match: {}".format(n_rows_col, statement_token_value, flag_match))
 
-            # extract numeric cell value
+            # candidate: Whether two rows are same/different for a column
+            m = re.search(r'(\bsame\b|\bdifferent\b)', self.statements[stmnt_i].text, flags=re.I)
+
+            if m and len(rows_matched) == 2 and statement_type_predict is None:
+                col_index = None
+                candidate_cols = [x for x in column_matched_tokens_dict if x > 0]
+
+                if len(candidate_cols) == 1:
+                    col_index = candidate_cols[0]
+
+                if col_index is not None:
+                    row_index_0 = rows_matched[0][0]
+                    row_index_1 = rows_matched[1][0]
+                    cell_value_0 = self.df.iloc[row_index_0 - self.table_data_start_row_index, col_index]
+                    cell_value_1 = self.df.iloc[row_index_1 - self.table_data_start_row_index, col_index]
+
+                    if m.group(0).lower() == "same":
+                        if cell_value_0 == cell_value_1:
+                            statement_type_predict = "entailed"
+                        else:
+                            statement_type_predict = "refuted"
+                    else:
+                        if cell_value_0 != cell_value_1:
+                            statement_type_predict = "entailed"
+                        else:
+                            statement_type_predict = "refuted"
+
+            # candidate: cell value
             if len(rows_matched) == 1 and statement_type_predict is None:
                 numeric_column_index_arr = []
                 non_numeric_column_index_arr = []
@@ -820,40 +875,37 @@ class Table:
                             break
 
                 if col_index is not None:
-                    for token_index_stmnt in range(len(self.statements[stmnt_i].tokens)):
-                        cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
-                        if cur_token.part_of_speech_coarse == "NUM":
-                            # consider only if its not part of the statement tokens matching the column, row
-                            flag_stmnt_token_belongs_to_column = False
-                            for token_index_start_column, token_index_end_column in column_matched_tokens_dict[col_index]:
-                                if token_index_stmnt in range(token_index_start_column, token_index_end_column):
-                                    flag_stmnt_token_belongs_to_column = True
+                    row_index = rows_matched[0][0]
+                    token_index_start_row = rows_matched[0][1]
+                    token_index_end_row = rows_matched[0][2]
+
+                    if row_index in self.cell_info_dict and col_index in self.cell_info_dict[row_index]:
+                        match_length = len(self.cell_info_dict[row_index][col_index])
+
+                        flag_cell_matched = None
+                        for token_index_stmnt in range(len(self.statements[stmnt_i].tokens) - match_length + 1):
+                            token_i = 0
+                            flag_cell_matched = True
+                            while token_i < match_length:
+                                if (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].text.lower() !=
+                                        self.cell_info_dict[row_index][col_index][token_i].text.lower()) and \
+                                        (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].lemma.lower() !=
+                                             self.cell_info_dict[row_index][col_index][token_i].lemma.lower()):
+                                    flag_cell_matched = False
                                     break
-                            if flag_stmnt_token_belongs_to_column:
-                                continue
-                            token_index_start_row = rows_matched[0][1]
-                            token_index_end_row = rows_matched[0][2]
-                            if token_index_stmnt in range(token_index_start_row, token_index_end_row):
-                                continue
-                            row_index = rows_matched[0][0]
-                            if False:
-                                column_name = self.df.columns[col_index]
-                                cell_value = self.df.loc[row_index-self.table_data_start_row_index, column_name]
-                            cell_value = self.df.iloc[row_index-self.table_data_start_row_index, col_index]
-                            _, statement_token_value = is_number(cur_token.text)
+                                token_i += 1
 
-                            if is_col_numeric:
-                                pass
-                            else:
-                                pass
+                            if flag_cell_matched:
+                                if verbose:
+                                    cell_text = " ".join([self.cell_info_dict[row_index][col_index][i].text for i in range(len(self.cell_info_dict[row_index][col_index]))])
+                                    print("\tCell matched: {}".format(cell_text))
 
-                            flag_match = cell_value == statement_token_value
-                            if flag_match:
-                                statement_type_predict = "entailed"
-                            else:
-                                statement_type_predict = "refuted"
-                            if verbose:
-                                print("\tNumeric value: cell: {} :: statement: {} :: match: {}".format(cell_value, cur_token.text, flag_match))
+                                break
+
+                        if flag_cell_matched:
+                            statement_type_predict = "entailed"
+                        elif not flag_cell_matched:
+                            statement_type_predict = "refuted"
 
             if statement_type_predict is None:
                 statement_type_predict = "unknown"
@@ -865,6 +917,10 @@ class Table:
             statement_output_elem.set("id", self.statements[stmnt_i].id)
             # statement_output_elem.set("text", self.statements[stmnt_i].text)
             statement_output_elem.set("type", statement_type_predict)
+
+            if True:
+                print("Statement: id: {} :: type(ground truth): {} :: type(predicted): {} :: text: {}".format(
+                    self.statements[stmnt_i].id, self.statements[stmnt_i].type, statement_type_predict, self.statements[stmnt_i].text))
 
         return table_output_elem
 

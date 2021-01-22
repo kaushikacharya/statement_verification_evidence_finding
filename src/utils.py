@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import re
+
 def is_number(s):
     """Identify whether input string is a number or not.
 
@@ -22,3 +24,26 @@ def is_number(s):
         return True, float(s)
     except ValueError:
         return False, s
+
+def modify_text(s):
+    """Replace unexpected characters with expected characters
+
+        Examples
+        --------
+        10257.xml, Table 4
+            Table cell contains: A-A′  (last character: prime) ((U+2032)
+                            https://www.fileformat.info/info/unicode/char/2032/index.htm
+                            https://unicodelookup.com/#prime/1
+            Whereas statement contains: A-A' (last character: apostrophe) ((U+0027)
+                            https://www.fileformat.info/info/unicode/char/27/index.htm
+                            https://unicodelookup.com/#apostrophe/1
+
+        Note
+        ----
+        Foot is denoted by prime symbol. (https://en.wikipedia.org/wiki/Foot_(unit)#Symbol)
+        Hence replacing it with apostrophe may not be a correct approach.
+    """
+    # replace prime character by apostrophe
+    s = re.sub(r"′", r"'", s)
+
+    return s
