@@ -123,7 +123,10 @@ class Document:
             try:
                 table_obj = Table(doc_id=self.doc_id, nlp_process_obj=self.nlp_process_obj)
                 table_obj.parse_xml(table_item=table_item, flag_cell_span=flag_cell_span, verbose=verbose)
-                table_output_elem = table_obj.process_table(verbose=verbose)
+                statement_id_predict_type_map = table_obj.process_table(verbose=verbose)
+                # Build the table element for submit
+                table_output_elem = table_obj.build_table_element(statement_id_predict_type_map=statement_id_predict_type_map)
+                # Append the table element into document element
                 doc_output_elem.append(table_output_elem)
                 n_statements_doc += len(table_obj.statements)
                 n_tables_doc += 1

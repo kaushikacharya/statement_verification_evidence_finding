@@ -57,6 +57,8 @@ class Table:
         self.df = None
         # dict of dict: keys: [row_index][col_index],  values: list of Token
         self.cell_info_dict = dict()
+        # dict of dict: keys: [row_index][col_index],  values: set of statement ids for which the cell is relevant
+        self.cell_evidence_dict = dict()
         self.statements = []
 
     def parse_xml(self, table_item, flag_cell_span=True, verbose=False):
@@ -87,7 +89,7 @@ class Table:
         if verbose and len(self.legend_text) > 0:
             print("Legend: {}".format(self.legend_text))
 
-        # Iterate over the rows to
+        # Iterate over the table rows to
         #   a) identify column range and row range
         #   b) populate cell_info_dict
         # This helps in identifying empty columns at the end which can be skipped while forming the dataframe
@@ -130,7 +132,13 @@ class Table:
 
                 if cur_row_id not in self.cell_info_dict:
                     self.cell_info_dict[cur_row_id] = dict()
+                # insert empty list which will be populated with list of Token objects
                 self.cell_info_dict[cur_row_id][cur_col_id] = []
+
+                if cur_row_id not in self.cell_evidence_dict:
+                    self.cell_evidence_dict[cur_row_id] = dict()
+                # insert empty set which will be later populated with statement ids for which the cell is relevant
+                self.cell_evidence_dict[cur_row_id][cur_col_id] = set()
 
                 doc_cell = self.nlp_process_obj.construct_doc(text=cell_text)
                 for token in doc_cell:
@@ -351,10 +359,8 @@ class Table:
                 regex_pattern += r'\b{}\b'.format(column_name)
             regex_pattern += r')'
 
-        table_output_elem = ET.Element("table")
-        table_output_elem.set("id", self.table_id)
-        statements_output_elem = ET.Element("statements")
-        table_output_elem.append(statements_output_elem)
+        # key: statement id  value: predicted type
+        statement_id_predict_type_map = dict()
 
         if verbose:
             print("\n")
@@ -718,7 +724,8 @@ class Table:
                                 else:
                                     statement_type_predict = "refuted"
 
-            # candidate: uniqueness, varies
+            # candidate: identical, uniqueness, varies of column
+            flag_candidate_identical = False
             flag_candidate_unique = False
             flag_candidate_vary = False
 
@@ -733,6 +740,8 @@ class Table:
                         flag_candidate_vary = True
                         if verbose:
                             print("\tvary: {}".format(cur_token.text))
+                    elif cur_token.lemma.lower() in ["identical", "same"]:
+                        flag_candidate_identical = True
 
             if flag_candidate_unique and statement_type_predict is None:
                 if len(column_matched_tokens_dict) == 1:
@@ -907,22 +916,45 @@ class Table:
                         elif not flag_cell_matched:
                             statement_type_predict = "refuted"
 
-            if statement_type_predict is None:
-                statement_type_predict = "unknown"
+            statement_id_predict_type_map[self.statements[stmnt_i].id] = statement_type_predict
 
             if verbose:
                 print("\tPredicted type: {}".format(statement_type_predict))
-
-            statement_output_elem = ET.SubElement(statements_output_elem, "statement")
-            statement_output_elem.set("id", self.statements[stmnt_i].id)
-            # statement_output_elem.set("text", self.statements[stmnt_i].text)
-            statement_output_elem.set("type", statement_type_predict)
 
             if True:
                 print("Statement: id: {} :: type(ground truth): {} :: type(predicted): {} :: text: {}".format(
                     self.statements[stmnt_i].id, self.statements[stmnt_i].type, statement_type_predict, self.statements[stmnt_i].text))
 
-        return table_output_elem
+        return statement_id_predict_type_map
+
+    def build_table_element(self, statement_id_predict_type_map):
+        """Build XML table element with predictions.
+            Populate only the fields which are absolutely required for evaluation.
+
+            Returns
+            -------
+            table xml element
+        """
+        table_elem = ET.Element("table")
+        table_elem.set("id", self.table_id)
+        statements_elem = ET.Element("statements")
+        table_elem.append(statements_elem)
+
+        for stmnt_i in range(len(self.statements)):
+            statement_elem = ET.SubElement(statements_elem, "statement")
+            statement_elem.set("id", self.statements[stmnt_i].id)
+            # statement_elem.set("text", self.statements[stmnt_i].text)
+            if self.statements[stmnt_i].id in statement_id_predict_type_map:
+                statement_type_predict = statement_id_predict_type_map[self.statements[stmnt_i].id]
+            else:
+                statement_type_predict = None
+
+            if statement_type_predict is None:
+                statement_type_predict = "unknown"
+
+            statement_elem.set("type", statement_type_predict)
+
+        return table_elem
 
     def extract_numeric_range_of_non_numeric_column(self, col_index):
         min_column_value = None
