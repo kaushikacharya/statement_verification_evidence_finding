@@ -4,7 +4,7 @@
 N.B. If executing in console, execute the following as pre-requisite:
 export PYTHONIOENCODING=UTF-8
 
-Command: python -u -m src.dataset --flag_cell_span > ./output/dataset/dataset.txt 2>&1
+Command: python -u -m src.dataset --flag_cell_span > ./output/dataset/dataset_train.txt 2>&1
 """
 
 import argparse
@@ -74,7 +74,7 @@ if __name__ == "__main__":
                         default="C:/KA/data/NLP/statement_verification_evidence_finding/train_manual_v1.3.2/v1.3.2/ref/", dest="data_dir")
     parser.add_argument("--flag_cell_span", action="store_true", default=False, dest="flag_cell_span",
                         help="bool to indicate whether row, col span is mentioned for each cell. data version 1.3 introduces span.")
-    parser.add_argument("--submit_dir", action="store", default=os.path.join(os.path.dirname(__file__), "../output/submit"), dest="submit_dir")
+    parser.add_argument("--submit_dir", action="store", default=os.path.join(os.path.dirname(__file__), "../output/res"), dest="submit_dir")
     args = parser.parse_args()
 
     print("args: {}".format(args))
