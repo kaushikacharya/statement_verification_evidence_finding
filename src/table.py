@@ -647,7 +647,7 @@ class Table:
                 Cases:
                     (a) TODO Both superlative numeric value and corresponding row mentioned in the statement.
                     (b) Only superlative numeric value mentioned i.e. corresponding row not mentioned.
-                    (c) Only superlative row mentioned i.e. corresponding nummeric value not mentioned.
+                    (c) Only superlative row mentioned i.e. corresponding numeric value not mentioned.
                 """
                 if numeric_value is not None:
                     if len(numeric_column_index_arr) == 1:
@@ -663,6 +663,7 @@ class Table:
                             self.extract_numeric_range_of_non_numeric_column(col_index=col_index)
 
                     if min_column_value is not None:
+                        # Identified min/max column value
                         if m.group(0).lower() == "lowest":
                             if min_column_value == numeric_value:
                                 statement_type_predict = "entailed"
@@ -918,11 +919,8 @@ class Table:
 
             statement_id_predict_type_map[self.statements[stmnt_i].id] = statement_type_predict
 
-            if verbose:
-                print("\tPredicted type: {}".format(statement_type_predict))
-
             if True:
-                print("Statement: id: {} :: type(ground truth): {} :: type(predicted): {} :: text: {}".format(
+                print("\tStatement: id: {} :: type(ground truth): {} :: type(predicted): {} :: text: {}".format(
                     self.statements[stmnt_i].id, self.statements[stmnt_i].type, statement_type_predict, self.statements[stmnt_i].text))
 
         return statement_id_predict_type_map
@@ -935,8 +933,33 @@ class Table:
             -------
             table xml element
         """
+        # status: evaluate script fails for 10232.xml, Table 7 as statement id="1" is not mentioned in evidence
         table_elem = ET.Element("table")
         table_elem.set("id", self.table_id)
+
+        for row_index in sorted(self.cell_evidence_dict.keys()):
+            row_elem = ET.Element("row")
+            row_elem.set("row", str(row_index))
+            for col_index in sorted(self.cell_evidence_dict[row_index].keys()):
+                cell_elem = ET.SubElement(row_elem, "cell")
+                # TODO Add col-end, row-end
+                cell_elem.set("col-start", str(col_index))
+                cell_elem.set("row-start", str(row_index))
+
+                for stmnt_i in range(len(self.statements)):
+                    statement_id = self.statements[stmnt_i].id
+                    evidence_elem = ET.SubElement(cell_elem, "evidence")
+                    evidence_elem.set("statement_id", statement_id)
+
+                    if statement_id in self.cell_evidence_dict[row_index][col_index]:
+                        evidence_elem.set("type", "relevant")
+                    else:
+                        evidence_elem.set("type", "irrelevant")
+
+                    evidence_elem.set("version", "0")
+
+            table_elem.append(row_elem)
+
         statements_elem = ET.Element("statements")
         table_elem.append(statements_elem)
 
