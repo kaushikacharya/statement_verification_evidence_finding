@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import re
+from xml.dom import minidom
+import xml.etree.ElementTree as ET
 
 def is_number(s):
     """Identify whether input string is a number or not.
@@ -47,3 +49,20 @@ def modify_text(s):
     s = re.sub(r"′", r"'", s)
 
     return s
+
+def prettify(elem):
+    """Return a pretty-printed XML ElementTree for the Element.
+
+        References
+        ----------
+        https://stackoverflow.com/questions/17402323/use-xml-etree-elementtree-to-print-nicely-formatted-xml-files
+            - Maxime Chéramy's answer
+        https://stackoverflow.com/questions/51660316/attributeerror-elementtree-object-has-no-attribute-tag-in-python
+            - Madhan Varadhodiyil's answer for handling AttributeError
+        https://stackoverflow.com/questions/647071/python-xml-elementtree-from-a-string-source
+            - dgassaway's answer to convert Element into ElementTree
+    """
+    root = elem.getroot()
+    rough_string = ET.tostring(root, 'utf-8')
+    reparsed = minidom.parseString(rough_string)
+    return ET.ElementTree(ET.fromstring(reparsed.toprettyxml(indent="\t")))

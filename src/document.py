@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 
 from src.nlp_process import NLPProcess
 from src.table import Table
+from src.utils import *
 
 pd.set_option("display.max_columns", 20)
 # pd.set_option("display.encoding", "utf-8")
@@ -186,6 +187,8 @@ def main(args):
         os.makedirs(submit_dir)
 
     doc_output_tree = output_dict["doc_output_tree"]
+    if args.flag_prettify:
+        doc_output_tree = prettify(doc_output_tree)
     submit_filepath = os.path.join(submit_dir, args.filename)
     with io.open(file=submit_filepath, mode="wb") as fd:
         doc_output_tree.write(fd)
@@ -198,6 +201,7 @@ if __name__ == "__main__":
     parser.add_argument("--filename", action="store", dest="filename")
     parser.add_argument("--flag_cell_span", action="store_true", default=False, dest="flag_cell_span",
                         help="bool to indicate whether row, col span is mentioned for each cell. data version 1.3 introduces span.")
+    parser.add_argument("--flag_prettify", action="store_true", default=False, dest="flag_prettify", help="pretty print XML")
     parser.add_argument("--verbose", action="store_true", default=False, dest="verbose")
     args = parser.parse_args()
 
