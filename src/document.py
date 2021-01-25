@@ -126,7 +126,7 @@ class Document:
                 table_obj.parse_xml(table_item=table_item, flag_cell_span=flag_cell_span, verbose=verbose)
                 statement_id_predict_type_map = table_obj.process_table(verbose=verbose)
                 # Build the table element for submit
-                table_output_elem = table_obj.build_table_element(statement_id_predict_type_map=statement_id_predict_type_map)
+                table_output_elem = table_obj.build_table_element(ref_table_elem=table_item, statement_id_predict_type_map=statement_id_predict_type_map)
                 # Append the table element into document element
                 doc_output_elem.append(table_output_elem)
                 n_statements_doc += len(table_obj.statements)
@@ -182,7 +182,7 @@ def main(args):
     doc_obj = Document(nlp_process_obj=nlp_process_obj)
     output_dict = doc_obj.parse_xml(xml_file=xml_file, flag_cell_span=args.flag_cell_span, verbose=args.verbose)
 
-    submit_dir = os.path.join(os.path.dirname(__file__), "../output/submit")
+    submit_dir = os.path.join(os.path.dirname(__file__), "../output/res")
     if not os.path.exists(submit_dir):
         os.makedirs(submit_dir)
 

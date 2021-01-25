@@ -925,46 +925,68 @@ class Table:
 
         return statement_id_predict_type_map
 
-    def build_table_element(self, statement_id_predict_type_map):
+    def build_table_element(self, ref_table_elem, statement_id_predict_type_map):
         """Build XML table element with predictions.
             Populate only the fields which are absolutely required for evaluation.
+
+            Parameters
+            ----------
+            ref_table_elem : xml.etree.ElementTree.Element
+                Table xml element in input xml.
+            statement_id_predict_type_map : dict
+                key: statement id  value: type prediction
 
             Returns
             -------
             table xml element
+
+            Note
+            ----
+            There are instances of missing statements in evidence. e.g. 10232.xml, Table 7
+            This leads to crashes in evaluate script. Hence considering only the statements which are mentioned in evidence element in ref_table_elem.
         """
-        # status: evaluate script fails for 10232.xml, Table 7 as statement id="1" is not mentioned in evidence
-        table_elem = ET.Element("table")
-        table_elem.set("id", self.table_id)
+        pred_table_elem = ET.Element("table")
+        pred_table_elem.set("id", self.table_id)
 
-        for row_index in sorted(self.cell_evidence_dict.keys()):
-            row_elem = ET.Element("row")
-            row_elem.set("row", str(row_index))
-            for col_index in sorted(self.cell_evidence_dict[row_index].keys()):
-                cell_elem = ET.SubElement(row_elem, "cell")
-                # TODO Add col-end, row-end
-                cell_elem.set("col-start", str(col_index))
-                cell_elem.set("row-start", str(row_index))
+        for ref_row_elem in ref_table_elem.iterfind("row"):
+            row_index = int(ref_row_elem.attrib["row"])
+            # assert row_index in self.cell_evidence_dict, "row_index: {} absent in cell_evidence_dict".format(row_index)
+            pred_row_elem = ET.Element("row")
+            pred_row_elem.set("row", str(row_index))
+            for ref_cell_elem in ref_row_elem.iterfind("cell"):
+                col_index = int(ref_cell_elem.attrib["col-start"])
+                # assert col_index in self.cell_evidence_dict[row_index], "col_index: {} absent in cell_evidence_dict corresponding to row_index: {}".format(col_index, row_index)
 
-                for stmnt_i in range(len(self.statements)):
-                    statement_id = self.statements[stmnt_i].id
-                    evidence_elem = ET.SubElement(cell_elem, "evidence")
-                    evidence_elem.set("statement_id", statement_id)
+                pred_cell_elem = ET.SubElement(pred_row_elem, "cell")
+                pred_cell_elem.set("col-end", ref_cell_elem.attrib["col-end"])
+                pred_cell_elem.set("col-start", str(col_index))
+                pred_cell_elem.set("col-end", ref_cell_elem.attrib["row-end"])
+                pred_cell_elem.set("row-start", str(row_index))
 
-                    if statement_id in self.cell_evidence_dict[row_index][col_index]:
-                        evidence_elem.set("type", "relevant")
+                for ref_evidence_elem in ref_cell_elem.iterfind("evidence"):
+                    statement_id = ref_evidence_elem.attrib["statement_id"]
+
+                    pred_evidence_elem = ET.SubElement(pred_cell_elem, "evidence")
+                    pred_evidence_elem.set("statement_id", statement_id)
+
+                    if row_index not in self.cell_evidence_dict or col_index not in self.cell_evidence_dict[row_index]:
+                        # case: empty cell
+                        pred_evidence_elem.set("type", "relevant")
+                    elif statement_id in self.cell_evidence_dict[row_index][col_index]:
+                        pred_evidence_elem.set("type", "relevant")
                     else:
-                        evidence_elem.set("type", "irrelevant")
+                        pred_evidence_elem.set("type", "irrelevant")
 
-                    evidence_elem.set("version", "0")
+                    pred_evidence_elem.set("version", ref_evidence_elem.attrib["version"])
 
-            table_elem.append(row_elem)
+            pred_table_elem.append(pred_row_elem)
 
-        statements_elem = ET.Element("statements")
-        table_elem.append(statements_elem)
+        # TODO Populate statements element based on ref_table_elem
+        pred_statements_elem = ET.Element("statements")
+        pred_table_elem.append(pred_statements_elem)
 
         for stmnt_i in range(len(self.statements)):
-            statement_elem = ET.SubElement(statements_elem, "statement")
+            statement_elem = ET.SubElement(pred_statements_elem, "statement")
             statement_elem.set("id", self.statements[stmnt_i].id)
             # statement_elem.set("text", self.statements[stmnt_i].text)
             if self.statements[stmnt_i].id in statement_id_predict_type_map:
@@ -977,7 +999,7 @@ class Table:
 
             statement_elem.set("type", statement_type_predict)
 
-        return table_elem
+        return pred_table_elem
 
     def extract_numeric_range_of_non_numeric_column(self, col_index):
         min_column_value = None
