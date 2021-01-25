@@ -675,6 +675,11 @@ class Table:
                             else:
                                 statement_type_predict = "refuted"
 
+                        # assign evidence
+                        for row_index in range(self.table_data_end_row_index):
+                            if row_index in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_index]:
+                                self.cell_evidence_dict[row_index][col_index].add(self.statements[stmnt_i].id)
+
                 elif len(rows_matched) == 1:
                     # case: numeric value of superlative not mentioned in the statement
                     # e.g. 20509.xml, Table 1
@@ -724,6 +729,20 @@ class Table:
                                     statement_type_predict = "entailed"
                                 else:
                                     statement_type_predict = "refuted"
+
+                            # assign evidence to the row matched
+                            if row_index in self.cell_evidence_dict and 0 in self.cell_evidence_dict[row_index]:
+                                self.cell_evidence_dict[row_index][0].add(self.statements[stmnt_i].id)
+
+                            # assign evidence for the column header mentioning the row name
+                            for row_index in range(self.table_data_start_row_index):
+                                if row_index in self.cell_evidence_dict and 0 in self.cell_evidence_dict[row_index]:
+                                    self.cell_evidence_dict[row_index][0].add(self.statements[stmnt_i].id)
+
+                            # assign evidence for the column for which superlative candidate was matched
+                            for row_index in range(self.table_data_end_row_index):
+                                if row_index in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_index]:
+                                    self.cell_evidence_dict[row_index][col_index].add(self.statements[stmnt_i].id)
 
             # candidate: identical, uniqueness, varies of column
             flag_candidate_identical = False
@@ -955,13 +974,14 @@ class Table:
             pred_row_elem.set("row", str(row_index))
             for ref_cell_elem in ref_row_elem.iterfind("cell"):
                 col_index = int(ref_cell_elem.attrib["col-start"])
+                row_index = int(ref_cell_elem.attrib["row-start"])
                 # assert col_index in self.cell_evidence_dict[row_index], "col_index: {} absent in cell_evidence_dict corresponding to row_index: {}".format(col_index, row_index)
 
                 pred_cell_elem = ET.SubElement(pred_row_elem, "cell")
                 pred_cell_elem.set("col-end", ref_cell_elem.attrib["col-end"])
-                pred_cell_elem.set("col-start", str(col_index))
-                pred_cell_elem.set("col-end", ref_cell_elem.attrib["row-end"])
-                pred_cell_elem.set("row-start", str(row_index))
+                pred_cell_elem.set("col-start", ref_cell_elem.attrib["col-start"])
+                pred_cell_elem.set("row-end", ref_cell_elem.attrib["row-end"])
+                pred_cell_elem.set("row-start", ref_cell_elem.attrib["row-start"])
 
                 for ref_evidence_elem in ref_cell_elem.iterfind("evidence"):
                     statement_id = ref_evidence_elem.attrib["statement_id"]
@@ -971,7 +991,7 @@ class Table:
 
                     if row_index not in self.cell_evidence_dict or col_index not in self.cell_evidence_dict[row_index]:
                         # case: empty cell
-                        pred_evidence_elem.set("type", "relevant")
+                        pred_evidence_elem.set("type", "irrelevant")
                     elif statement_id in self.cell_evidence_dict[row_index][col_index]:
                         pred_evidence_elem.set("type", "relevant")
                     else:
