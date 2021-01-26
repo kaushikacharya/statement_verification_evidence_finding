@@ -578,6 +578,7 @@ class Table:
                         if token_index_end_column <= token_i:
                             min_column_value = np.nanmin(self.df.iloc[:, col_index])
                             max_column_value = np.nanmax(self.df.iloc[:, col_index])
+
                             if (min_range_value == min_column_value) and (max_range_value == max_column_value):
                                 statement_type_predict = "entailed"
                                 if verbose:
@@ -587,6 +588,11 @@ class Table:
                                 if verbose:
                                     print("\t\tcandidate failed to verify: column value range: ({}, {}) :: statement value range: ({}, {})".format(
                                         min_column_value, max_column_value, min_range_value, max_range_value))
+
+                            # assign evidence
+                            for row_index in range(self.table_data_end_row_index):
+                                if row_index in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_index]:
+                                    self.cell_evidence_dict[row_index][col_index].add(self.statements[stmnt_i].id)
 
             # candidate: superlative
             m = re.search(r'(\bhighest\b|\bgreatest\b|\blargest\b|\blowest\b)', self.statements[stmnt_i].text,
@@ -772,6 +778,11 @@ class Table:
                     else:
                         statement_type_predict = "refuted"
 
+                    # assign evidence
+                    for row_idx in range(self.table_data_end_row_index):
+                        if row_idx in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_idx]:
+                            self.cell_evidence_dict[row_idx][col_index].add(self.statements[stmnt_i].id)
+
             if flag_candidate_vary and statement_type_predict is None:
                 if len(column_matched_tokens_dict) == 1:
                     col_index = list(column_matched_tokens_dict.keys())[0]
@@ -779,6 +790,11 @@ class Table:
                         statement_type_predict = "entailed"
                     else:
                         statement_type_predict = "refuted"
+
+                    # assign evidence
+                    for row_idx in range(self.table_data_end_row_index):
+                        if row_idx in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_idx]:
+                            self.cell_evidence_dict[row_idx][col_index].add(self.statements[stmnt_i].id)
 
             if False:
                 m = re.search(r'(\bunique\b)', self.statements[stmnt_i].text, flags=re.I)
@@ -803,7 +819,7 @@ class Table:
                     cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
                     if cur_token.part_of_speech_coarse == "NUM" and cur_token.dependency_tag == "nummod":
                         # consider only if its not part of the statement tokens matching the column, row
-                        col_index = list(column_matched_tokens_dict.keys())[0]
+                        # col_index = list(column_matched_tokens_dict.keys())[0]
                         flag_stmnt_token_belongs_to_column = False
 
                         for token_index_start_column, token_index_end_column in column_matched_tokens_dict[col_index]:
@@ -842,35 +858,92 @@ class Table:
                         elif flag_match is False:
                             statement_type_predict = "refuted"
 
+                        # assign evidence
+                        if flag_match is not None:
+                            for row_idx in range(self.table_data_end_row_index):
+                                if row_idx in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_idx]:
+                                    self.cell_evidence_dict[row_idx][col_index].add(self.statements[stmnt_i].id)
+
                         if verbose:
                             print("\tNumber of rows for column: {} :: count mentioned in statement: {} :: match: {}".format(n_rows_col, statement_token_value, flag_match))
 
-            # candidate: Whether two rows are same/different for a column
-            m = re.search(r'(\bsame\b|\bdifferent\b)', self.statements[stmnt_i].text, flags=re.I)
+            # candidate:
+            #   a) Whether multiple rows have same/different value for a column
+            #   b) Whether multiple columns have same/different value for a row
+            m = re.search(r'(\bsame\b|\bidentical\b|\bdifferent\b)', self.statements[stmnt_i].text, flags=re.I)
 
-            if m and len(rows_matched) == 2 and statement_type_predict is None:
+            if m and statement_type_predict is None:
                 col_index = None
                 candidate_cols = [x for x in column_matched_tokens_dict if x > 0]
 
-                if len(candidate_cols) == 1:
+                if len(candidate_cols) == 1 and len(rows_matched) > 1:
+                    # case: compare row values for a single column
                     col_index = candidate_cols[0]
 
-                if col_index is not None:
-                    row_index_0 = rows_matched[0][0]
-                    row_index_1 = rows_matched[1][0]
-                    cell_value_0 = self.df.iloc[row_index_0 - self.table_data_start_row_index, col_index]
-                    cell_value_1 = self.df.iloc[row_index_1 - self.table_data_start_row_index, col_index]
+                    cell_value_arr = [self.df.iloc[x[0] - self.table_data_start_row_index, col_index] for x in rows_matched]
+                    flag_candidate_identical = all([x == cell_value_arr[0] for x in cell_value_arr[1:]])
 
-                    if m.group(0).lower() == "same":
-                        if cell_value_0 == cell_value_1:
+                    if m.group(0).lower() in ["same", "identical"]:
+                        if flag_candidate_identical:
                             statement_type_predict = "entailed"
                         else:
                             statement_type_predict = "refuted"
                     else:
-                        if cell_value_0 != cell_value_1:
+                        if flag_candidate_identical:
+                            statement_type_predict = "refuted"
+                        else:
+                            statement_type_predict = "entailed"
+
+                    # assign evidence
+                    for row_info in rows_matched:
+                        row_index = row_info[0]
+                        if row_index in self.cell_evidence_dict:
+                            if col_index in self.cell_evidence_dict[row_index]:
+                                self.cell_evidence_dict[row_index][col_index].add(self.statements[stmnt_i].id)
+                            # column representing the row names
+                            if 0 in self.cell_evidence_dict[row_index]:
+                                self.cell_evidence_dict[row_index][0].add(self.statements[stmnt_i].id)
+
+                    # column headers
+                    for row_index in range(self.table_data_start_row_index):
+                        if row_index in self.cell_evidence_dict:
+                            if col_index in self.cell_evidence_dict[row_index]:
+                                self.cell_evidence_dict[row_index][col_index].add(self.statements[stmnt_i].id)
+                            # column representing the row names
+                            if 0 in self.cell_evidence_dict[row_index]:
+                                self.cell_evidence_dict[row_index][0].add(self.statements[stmnt_i].id)
+
+                elif len(candidate_cols) > 1 and len(rows_matched) == 1:
+                    # case: compare mentioned column values for a row
+                    row_index = rows_matched[0][0]
+
+                    cell_value_arr = [self.df.iloc[row_index - self.table_data_start_row_index, col_index] for col_index in candidate_cols]
+                    flag_candidate_identical = all([x == cell_value_arr[0] for x in cell_value_arr[1:]])
+
+                    if m.group(0).lower() in ["same", "identical"]:
+                        if flag_candidate_identical:
                             statement_type_predict = "entailed"
                         else:
                             statement_type_predict = "refuted"
+                    else:
+                        if flag_candidate_identical:
+                            statement_type_predict = "refuted"
+                        else:
+                            statement_type_predict = "entailed"
+
+                    # assign evidence
+                    if row_index in self.cell_evidence_dict:
+                        for col_idx in (candidate_cols + [0]):
+                            if col_idx in self.cell_evidence_dict[row_index]:
+                                self.cell_evidence_dict[row_index][col_idx].add(self.statements[stmnt_i].id)
+
+                    # assign evidence to column headers
+                    for row_idx in range(self.table_data_start_row_index):
+                        if row_idx in self.cell_evidence_dict:
+                            for col_idx in (candidate_cols + [0]):
+                                if col_idx in self.cell_evidence_dict[row_idx]:
+                                    self.cell_evidence_dict[row_idx][col_idx].add(self.statements[stmnt_i].id)
+
 
             # candidate: cell value
             if len(rows_matched) == 1 and statement_type_predict is None:
@@ -935,6 +1008,16 @@ class Table:
                             statement_type_predict = "entailed"
                         elif not flag_cell_matched:
                             statement_type_predict = "refuted"
+
+                        # evidence
+                        for col_idx in [col_index, 0]:
+                            if row_index in self.cell_evidence_dict and col_idx in self.cell_evidence_dict[row_index]:
+                                self.cell_evidence_dict[row_index][col_idx].add(self.statements[stmnt_i].id)
+
+                            # column headers
+                            for row_idx in range(self.table_data_start_row_index):
+                                if row_idx in self.cell_evidence_dict and col_idx in self.cell_evidence_dict[row_idx]:
+                                    self.cell_evidence_dict[row_idx][col_idx].add(self.statements[stmnt_i].id)
 
             statement_id_predict_type_map[self.statements[stmnt_i].id] = statement_type_predict
 
