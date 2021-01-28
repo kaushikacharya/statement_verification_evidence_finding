@@ -495,14 +495,28 @@ class Table:
                 col_index_arr = [k for k, v in sorted(column_matched_tokens_dict.items(), key=lambda x: x[1])]
                 prev_col_index = col_index_arr[0]
                 for cur_col_index in col_index_arr[1:]:
-                    if (len(column_matched_tokens_dict[cur_col_index]) == 1 and len(column_matched_tokens_dict[prev_col_index]) == 1) and \
-                            (column_matched_tokens_dict[cur_col_index][0][0] < column_matched_tokens_dict[prev_col_index][0][1]) and \
-                            (column_matched_tokens_dict[cur_col_index][0][1] <= column_matched_tokens_dict[prev_col_index][0][1]):
+                    flag_prev_col_contains_cur_col = False
+                    flag_cur_col_contains_prev_col = False
+
+                    if (len(column_matched_tokens_dict[cur_col_index]) == 1) and (len(column_matched_tokens_dict[prev_col_index]) == 1):
                         # Currently considering subset only for non-disjoint text span
-                        flag_col_matched_arr[cur_col_index] = False
-                        column_matched_tokens_dict.pop(cur_col_index)
-                    else:
-                        prev_col_index = cur_col_index
+                        if (column_matched_tokens_dict[cur_col_index][0][0] < column_matched_tokens_dict[prev_col_index][0][1]) and \
+                                (column_matched_tokens_dict[cur_col_index][0][1] <= column_matched_tokens_dict[prev_col_index][0][1]):
+                            flag_prev_col_contains_cur_col = True
+                        elif (column_matched_tokens_dict[cur_col_index][0][0] == column_matched_tokens_dict[prev_col_index][0][0]) and \
+                                (column_matched_tokens_dict[cur_col_index][0][1] > column_matched_tokens_dict[prev_col_index][0][1]):
+                            # ?? 2nd condition might be redundant since the sort over tuples should have taken care of this
+                            flag_cur_col_contains_prev_col = True
+
+                        if flag_prev_col_contains_cur_col:
+                            flag_col_matched_arr[cur_col_index] = False
+                            column_matched_tokens_dict.pop(cur_col_index)
+                        elif flag_cur_col_contains_prev_col:
+                            flag_col_matched_arr[prev_col_index] = False
+                            column_matched_tokens_dict.pop(prev_col_index)
+                            prev_col_index = cur_col_index
+                        else:
+                            prev_col_index = cur_col_index
 
             if verbose:
                 col_matched_arr = [self.df.columns[i] for i in range(len(flag_col_matched_arr)) if flag_col_matched_arr[i]]
@@ -1080,7 +1094,10 @@ class Table:
                     else:
                         pred_evidence_elem.set("type", "irrelevant")
 
-                    pred_evidence_elem.set("version", ref_evidence_elem.attrib["version"])
+                    version = ref_evidence_elem.attrib["version"]
+                    if version == "":
+                        version = "0"
+                    pred_evidence_elem.set("version", version)
 
             pred_table_elem.append(pred_row_elem)
 
