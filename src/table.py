@@ -696,9 +696,9 @@ class Table:
                                 statement_type_predict = "refuted"
 
                         # assign evidence
-                        for row_index in range(self.table_data_end_row_index):
-                            if row_index in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_index]:
-                                self.cell_evidence_dict[row_index][col_index].add(self.statements[stmnt_i].id)
+                        for row_idx in range(self.table_data_end_row_index):
+                            if row_idx in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_idx]:
+                                self.cell_evidence_dict[row_idx][col_index].add(self.statements[stmnt_i].id)
 
                 elif len(rows_matched) == 1:
                     # case: numeric value of superlative not mentioned in the statement
@@ -755,14 +755,14 @@ class Table:
                                 self.cell_evidence_dict[row_index][0].add(self.statements[stmnt_i].id)
 
                             # assign evidence for the column header mentioning the row name
-                            for row_index in range(self.table_data_start_row_index):
-                                if row_index in self.cell_evidence_dict and 0 in self.cell_evidence_dict[row_index]:
-                                    self.cell_evidence_dict[row_index][0].add(self.statements[stmnt_i].id)
+                            for row_idx in range(self.table_data_start_row_index):
+                                if row_idx in self.cell_evidence_dict and 0 in self.cell_evidence_dict[row_idx]:
+                                    self.cell_evidence_dict[row_idx][0].add(self.statements[stmnt_i].id)
 
                             # assign evidence for the column for which superlative candidate was matched
-                            for row_index in range(self.table_data_end_row_index):
-                                if row_index in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_index]:
-                                    self.cell_evidence_dict[row_index][col_index].add(self.statements[stmnt_i].id)
+                            for row_idx in range(self.table_data_end_row_index):
+                                if row_idx in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_idx]:
+                                    self.cell_evidence_dict[row_idx][col_index].add(self.statements[stmnt_i].id)
 
             # candidate: identical, uniqueness, varies of column
             flag_candidate_identical = False
@@ -919,13 +919,13 @@ class Table:
                                 self.cell_evidence_dict[row_index][0].add(self.statements[stmnt_i].id)
 
                     # column headers
-                    for row_index in range(self.table_data_start_row_index):
-                        if row_index in self.cell_evidence_dict:
-                            if col_index in self.cell_evidence_dict[row_index]:
-                                self.cell_evidence_dict[row_index][col_index].add(self.statements[stmnt_i].id)
+                    for row_idx in range(self.table_data_start_row_index):
+                        if row_idx in self.cell_evidence_dict:
+                            if col_index in self.cell_evidence_dict[row_idx]:
+                                self.cell_evidence_dict[row_idx][col_index].add(self.statements[stmnt_i].id)
                             # column representing the row names
-                            if 0 in self.cell_evidence_dict[row_index]:
-                                self.cell_evidence_dict[row_index][0].add(self.statements[stmnt_i].id)
+                            if 0 in self.cell_evidence_dict[row_idx]:
+                                self.cell_evidence_dict[row_idx][0].add(self.statements[stmnt_i].id)
 
                 elif len(candidate_cols) > 1 and len(rows_matched) == 1:
                     # case: compare mentioned column values for a row
@@ -958,6 +958,116 @@ class Table:
                                 if col_idx in self.cell_evidence_dict[row_idx]:
                                     self.cell_evidence_dict[row_idx][col_idx].add(self.statements[stmnt_i].id)
 
+            # candidate: comparative
+            #   a) comparison between two columns
+            #       i) comparison over each of the rows
+            #       ii) comparison for a particular row
+            #   b) comparison between two rows
+            flag_comparative_greater_than = False
+            flag_comparative_lesser_than = False
+            comparative_token_index = None
+            for token_i in range(len(self.statements[stmnt_i].tokens) - 1):
+                if self.statements[stmnt_i].tokens[token_i+1].text.lower() == "than":
+                    if self.statements[stmnt_i].tokens[token_i].text.lower() in ["greater", "larger", "higher", "bigger"]:
+                        flag_comparative_greater_than = True
+                        comparative_token_index = token_i
+                        break
+                    elif self.statements[stmnt_i].tokens[token_i].text.lower() in ["smaller", "lower", "lesser"]:
+                        flag_comparative_lesser_than = True
+                        comparative_token_index = token_i
+                        break
+
+            if (flag_comparative_greater_than or flag_comparative_lesser_than) and statement_type_predict is None:
+                if len(column_matched_tokens_dict) > 1:
+                    # identify the columns which are compared by the comparative
+                    col_info_arr = []
+                    for col_idx in column_matched_tokens_dict:
+                        token_index_start_column = column_matched_tokens_dict[col_idx][0][0]
+                        token_index_end_column = column_matched_tokens_dict[col_idx][-1][1]
+                        col_info_arr.append((token_index_start_column, token_index_end_column, col_idx))
+
+                    col_info_arr = sorted(col_info_arr)
+
+                    # Now identify the columns which can be designated as LHS and RHS of comparative
+                    n_columns_matched = len(column_matched_tokens_dict)
+                    col_index_lhs_comparative = None
+                    col_index_rhs_comparative = None
+
+                    for col_i in range(n_columns_matched-1):
+                        cur_token_index_start_column = col_info_arr[col_i][0]
+                        cur_token_index_end_column = col_info_arr[col_i][1]
+                        next_token_index_start_column = col_info_arr[col_i+1][0]
+                        next_token_index_end_column = col_info_arr[col_i+1][1]
+
+                        if cur_token_index_end_column <= comparative_token_index < next_token_index_start_column:
+                            col_index_lhs_comparative = col_info_arr[col_i][2]
+                            col_index_rhs_comparative = col_info_arr[col_i+1][2]
+                            break
+                        elif next_token_index_start_column < comparative_token_index < next_token_index_end_column:
+                            # case: Can happen in case of multiIndex column in which the column headers of the column are written in disjoint form
+                            # ?? Can there be a case when LHS of comparative contains the comparative_token_index
+                            col_index_lhs_comparative = col_info_arr[col_i][2]
+                            col_index_rhs_comparative = col_info_arr[col_i + 1][2]
+                            break
+
+                    if col_index_lhs_comparative is not None:
+                        if len(rows_matched) == 1:
+                            row_index = rows_matched[0][0]
+                            lhs_value = self.df.iloc[row_index - self.table_data_start_row_index, col_index_lhs_comparative]
+                            rhs_value = self.df.iloc[row_index - self.table_data_start_row_index, col_index_rhs_comparative]
+
+                            if is_numeric_dtype(lhs_value) and is_numeric_dtype(rhs_value):
+                                if flag_comparative_greater_than:
+                                    flag_comparative_match = lhs_value > rhs_value
+                                elif flag_comparative_lesser_than:
+                                    flag_comparative_match = lhs_value < rhs_value
+
+                                # converting numpy bool to bool
+                                if bool(flag_comparative_match) is True:
+                                    statement_type_predict = "entailed"
+                                elif bool(flag_comparative_match) is False:
+                                    statement_type_predict = "refuted"
+
+                                # assign evidence
+                                if flag_comparative_match is not None:
+                                    if row_index in self.cell_evidence_dict:
+                                        for col_idx in [col_index_lhs_comparative, col_index_rhs_comparative, 0]:
+                                            if col_idx in self.cell_evidence_dict[row_index]:
+                                                self.cell_evidence_dict[row_index][col_idx].add(self.statements[stmnt_i].id)
+
+                                    # assign evidence to column headers
+                                    for row_idx in range(self.table_data_start_row_index):
+                                        if row_idx in self.cell_evidence_dict:
+                                            for col_idx in [col_index_lhs_comparative, col_index_rhs_comparative, 0]:
+                                                if col_idx in self.cell_evidence_dict[row_idx]:
+                                                    self.cell_evidence_dict[row_idx][col_idx].add(
+                                                        self.statements[stmnt_i].id)
+
+                        elif len(rows_matched) == 0:
+                            # case: compare each element of the two columns
+                            m = re.search(r'(\beach\b|\bevery\b)', self.statements[stmnt_i].text, flags=re.I)
+                            flag_comparative_match = None
+                            if m and is_numeric_dtype(self.df.iloc[:, col_index_lhs_comparative]) and \
+                                    is_numeric_dtype(self.df.iloc[:, col_index_rhs_comparative]):
+                                if flag_comparative_greater_than:
+                                    flag_comparative_match = all(self.df.iloc[:, col_index_lhs_comparative] > self.df.iloc[:, col_index_rhs_comparative])
+                                elif flag_comparative_lesser_than:
+                                    flag_comparative_match = all(self.df.iloc[:, col_index_lhs_comparative] < self.df.iloc[:, col_index_rhs_comparative])
+
+                            if flag_comparative_match is True:
+                                statement_type_predict = "entailed"
+                            elif flag_comparative_match is False:
+                                statement_type_predict = "refuted"
+
+                            # assign evidence
+                            if flag_comparative_match is not None:
+                                for col_idx in [col_index_lhs_comparative, col_index_rhs_comparative]:
+                                    for row_idx in range(self.table_data_end_row_index):
+                                        if row_idx in self.cell_evidence_dict and col_idx in self.cell_evidence_dict[row_idx]:
+                                            self.cell_evidence_dict[row_idx][col_idx].add(self.statements[stmnt_i].id)
+
+                elif len(rows_matched) > 1:
+                    pass
 
             # candidate: cell value
             if len(rows_matched) == 1 and statement_type_predict is None:
