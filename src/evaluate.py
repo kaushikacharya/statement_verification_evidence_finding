@@ -7,6 +7,7 @@ from glob import glob
 from bs4 import BeautifulSoup
 import sklearn
 import sklearn.metrics
+import pdb
 
 ###USEFUL FONCTION
 
@@ -28,22 +29,38 @@ def read_xml(filename, type="prediction"):
     result_dict = {}
     content = open(filename, encoding="utf-8").read()
     soup = BeautifulSoup(content, "lxml")
+    print("Reading file {}".format(filename))
     for table in soup.find_all("table"):
+        evidence_missing_flag = False
+        evidence_repeat_flag = False
+        print("Reading table {} in file {}".format(table["id"], filename))
         result_dict[table["id"]] = {}
         for statement in table.find_all("statement"):
             result_dict[table["id"]][statement["id"]] = {"type": statement["type"], "evidence":{}}
         for row in table.find_all("row"):
             for cell in row.find_all("cell"):
                 for evidence in cell.find_all("evidence"):
-                    if type=="solution" and int(evidence["version"])>0:
-                        print("Evidence version > 0 detected in solution, ignoring this evidence")
+                    #if type == "prediction":
+                    #    pdb.set_trace()
+                    if type == "prediction" and (evidence["version"] == "" and evidence["type"] == ""):
+                        if not evidence_missing_flag:
+                            print("Evidence missing for table {} in file {}".format(table["id"], filename))
+                            evidence_missing_flag = True
+                        continue
+
+                    if type=="prediction" and int(evidence["version"])>0:
+                        if not evidence_repeat_flag:
+                            print("Evidence version > 0 detected in prediction for table {} in file {}, "
+                            "ignoring this evidence".format(table["id"], filename))
+                            evidence_repeat_flag = True
                         continue
 
                     if evidence["version"] not in result_dict[table["id"]][evidence["statement_id"]]["evidence"]:
                         result_dict[table["id"]][evidence["statement_id"]]["evidence"][evidence["version"]] = {}
 
 
-                    result_dict[table["id"]][evidence["statement_id"]]["evidence"][evidence["version"]][(cell["row-start"], cell["col-start"])] = evidence["type"]
+                    result_dict[table["id"]][evidence["statement_id"]]["evidence"][evidence["version"]][(cell["row-start"],
+                                                                                    cell["col-start"])] = evidence["type"]
 
     return result_dict
 
@@ -97,7 +114,6 @@ if os.path.isdir(submit_dir) and os.path.isdir(truth_dir):
 
     task_b_missing_flag = False
     for i, solution_file in enumerate(solution_names):
-        print(solution_file)
         scores_task_a_2way_list_file = []
         scores_task_a_3way_list_file = []
         scores_task_b_f1_file = []
@@ -177,25 +193,34 @@ if os.path.isdir(submit_dir) and os.path.isdir(truth_dir):
                                                            statement_id, table_id))
 
                     scores_task_b_f1_table.append(max(f1_scores))
-            scores_task_a_2way_list_file.append(f1_scoring(scores_task_a_2way_table_list))
-            scores_task_a_3way_list_file.append(f1_scoring(scores_task_a_3way_table_list))
+            twoway_f1=f1_scoring(scores_task_a_2way_table_list)
+            threeway_f1 = f1_scoring(scores_task_a_3way_table_list)
+            print("Results for file: {} table: {}".format(solution_file, table_id))
+            print("task_a_2way_f1_total: %f " % (twoway_f1))
+            print("task_a_3way_f1_total: %f " % (threeway_f1))
+            scores_task_a_2way_list_file.append(twoway_f1)
+            scores_task_a_3way_list_file.append(threeway_f1)
             if task_b_missing_flag and len(scores_task_b_f1_table) > 0:
-                raise ValueError("Some evidence is missing for table {}".format(table_id))
+                raise ValueError("Some evidence is missing for table {}, but some are also provided. "
+                                 "If participating in evidence task, all evidence must be provided, "
+                                 "else there must be no evidence.".format(table_id))
             if len(scores_task_b_f1_table) > 0:
                 scores_task_b_f1_file.append(np.mean(scores_task_b_f1_table))
 
         scores_task_a_2way_list += scores_task_a_2way_list_file
         scores_task_a_3way_list += scores_task_a_3way_list_file
         scores_task_b_f1 += scores_task_b_f1_file
-        # print(solution_file)
-        print("task_a_2way_f1_total: %f " % (np.mean(scores_task_a_2way_list_file)))
-        print("task_a_3way_f1_total: %f " % (np.mean(scores_task_a_3way_list_file)))
+
         if len(scores_task_b_f1_file) > 0:
             print("task_b_f1_total: %f" % (np.mean(scores_task_b_f1_file)))
+    print("Overall Results")
     output_file.writelines(["task_a_2way_f1_total: %.4f \n" % (np.mean(scores_task_a_2way_list))])
+    print("task_a_2way_f1_total: %.4f \n" % (np.mean(scores_task_a_2way_list)))
     output_file.writelines(["task_a_3way_f1_total: %.4f \n" % (np.mean(scores_task_a_3way_list))])
+    print("task_a_3way_f1_total: %.4f \n" % (np.mean(scores_task_a_3way_list)))
     if len(scores_task_b_f1) == 0:
         scores_task_b_f1 = [0]
     output_file.writelines(["task_b_f1_total: %.4f \n" % (np.mean(scores_task_b_f1))])
+    print("task_b_f1_total: %.4f \n" % (np.mean(scores_task_b_f1)))
 
     output_file.close()
