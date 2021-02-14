@@ -78,7 +78,7 @@ class Table:
         if caption is not None:
             self.caption_text = re.sub(r"\s+", " ", caption.attrib['text'])
 
-        if verbose and len(self.caption_text) > 0:
+        if len(self.caption_text) > 0:
             print("Caption: {}".format(self.caption_text))
 
         # extract legend text
@@ -770,6 +770,7 @@ class Table:
             flag_candidate_vary = False
 
             if len(rows_matched) == 0:
+                prev_token = None
                 for token_index_stmnt in range(len(self.statements[stmnt_i].tokens)):
                     cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
                     if cur_token.lemma.lower() in ["different", "unique"]:
@@ -782,6 +783,10 @@ class Table:
                             print("\tvary: {}".format(cur_token.text))
                     elif cur_token.lemma.lower() in ["identical", "same"]:
                         flag_candidate_identical = True
+                        if verbose:
+                            print("\tidentical: {}".format(cur_token.text))
+
+                    prev_token = cur_token
 
             if flag_candidate_unique and statement_type_predict is None:
                 if len(column_matched_tokens_dict) == 1:
@@ -828,7 +833,11 @@ class Table:
             # candidate: count rows for column
             if len(column_matched_tokens_dict) == 1 and statement_type_predict is None:
                 col_index = list(column_matched_tokens_dict.keys())[0]
-                n_rows_col = len(self.df.iloc[:, col_index].dropna())
+                if len(rows_matched) > 0:
+                    n_rows_matched_col = len(rows_matched)
+                else:
+                    n_rows_matched_col = len(self.df.iloc[:, col_index].dropna())
+
                 for token_index_stmnt in range(len(self.statements[stmnt_i].tokens)):
                     cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
                     if cur_token.part_of_speech_coarse == "NUM" and cur_token.dependency_tag == "nummod":
@@ -858,12 +867,12 @@ class Table:
                             # Basic check to skip considering float aa count
                             # TODO Need to identify text/dependency tree pattern to consider as candidate for count rows
                             if int(statement_token_value) == statement_token_value:
-                                flag_match = statement_token_value == n_rows_col
+                                flag_match = statement_token_value == n_rows_matched_col
                         else:
                             # convert word to numeric value
                             try:
                                 statement_token_value_numeric = w2n.word_to_num(statement_token_value)
-                                flag_match = n_rows_col == statement_token_value_numeric
+                                flag_match = n_rows_matched_col == statement_token_value_numeric
                             except:
                                 continue
 
@@ -879,7 +888,7 @@ class Table:
                                     self.cell_evidence_dict[row_idx][col_index].add(self.statements[stmnt_i].id)
 
                         if verbose:
-                            print("\tNumber of rows for column: {} :: count mentioned in statement: {} :: match: {}".format(n_rows_col, statement_token_value, flag_match))
+                            print("\tNumber of rows matched for column: {} :: count mentioned in statement: {} :: match: {}".format(n_rows_matched_col, statement_token_value, flag_match))
 
             # candidate:
             #   a) Whether multiple rows have same/different value for a column
