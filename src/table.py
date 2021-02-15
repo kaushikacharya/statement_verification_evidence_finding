@@ -765,9 +765,11 @@ class Table:
                                     self.cell_evidence_dict[row_idx][col_index].add(self.statements[stmnt_i].id)
 
             # candidate: identical, uniqueness, varies of column
+            # sub-candidate: count of different values mentioned
             flag_candidate_identical = False
             flag_candidate_unique = False
             flag_candidate_vary = False
+            n_unique_row = None
 
             if len(rows_matched) == 0:
                 prev_token = None
@@ -775,8 +777,22 @@ class Table:
                     cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
                     if cur_token.lemma.lower() in ["different", "unique"]:
                         flag_candidate_unique = True
+                        if prev_token and prev_token.part_of_speech_coarse == "NUM":
+                            # e.g. 20506.xml, Table 2
+                            #   Statement: There are 2 different types of measures.
+                            #   Column: Measure
+                            flag_numeric, statement_prev_token_value = is_number(prev_token.text)
+                            if flag_numeric:
+                                n_unique_row = statement_prev_token_value
+                            else:
+                                # convert word to numeric value
+                                try:
+                                    n_unique_row = w2n.word_to_num(statement_prev_token_value)
+                                except:
+                                    pass
+
                         if verbose:
-                            print("\tunique: {}".format(cur_token.text))
+                            print("\tunique: {} {}".format(n_unique_row, cur_token.text))
                     elif cur_token.lemma.lower() in ["vary", "variation"]:
                         flag_candidate_vary = True
                         if verbose:
@@ -786,13 +802,16 @@ class Table:
                         if verbose:
                             print("\tidentical: {}".format(cur_token.text))
 
+                    # update previous token before next iteration
                     prev_token = cur_token
 
             if flag_candidate_unique and statement_type_predict is None:
                 if len(column_matched_tokens_dict) == 1:
                     col_index = list(column_matched_tokens_dict.keys())[0]
+                    # expected unique count is based on whether number of different values of column is mentioned in the statement or not
+                    n_expected_unique_row =  n_unique_row if n_unique_row is not None else len(self.df)
 
-                    if len(self.df.iloc[:, col_index].unique()) == len(self.df):
+                    if len(self.df.iloc[:, col_index].dropna().unique()) == n_expected_unique_row:
                         statement_type_predict = "entailed"
                     else:
                         statement_type_predict = "refuted"
@@ -805,7 +824,7 @@ class Table:
             if flag_candidate_vary and statement_type_predict is None:
                 if len(column_matched_tokens_dict) == 1:
                     col_index = list(column_matched_tokens_dict.keys())[0]
-                    if len(self.df.iloc[:, col_index].unique()) > 1:
+                    if len(self.df.iloc[:, col_index].dropna().unique()) > 1:
                         statement_type_predict = "entailed"
                     else:
                         statement_type_predict = "refuted"
