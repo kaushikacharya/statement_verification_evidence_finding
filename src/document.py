@@ -78,13 +78,14 @@ class Document:
         self.doc_id = None
         self.nlp_process_obj = nlp_process_obj
 
-    def parse_xml(self, xml_file, table_tag="table", flag_modify_xml=False, flag_cell_span=True, verbose=False):
+    def parse_xml(self, xml_file, table_tag="table", table_id=None, flag_modify_xml=False, flag_cell_span=True, verbose=False):
         """Parse xml of the document.
 
             Parameters
             ----------
             xml_file : filepath (XML document file path)
             table_tag : str (For v1 its "Table")
+            table_id : str (default: None, pass a value to execute a particular table)
             flag_modify_xml : bool (True only for data version v1)
             flag_cell_span : bool (True from data version 1.3 onwards)
             verbose : bool
@@ -120,6 +121,9 @@ class Document:
         for table_item in root.findall(table_tag):
             if True:
                 print("\n{} : {}".format(table_item.tag, table_item.attrib))
+
+            if table_id is not None and table_item.attrib["id"] != table_id:
+                    continue
 
             try:
                 table_obj = Table(doc_id=self.doc_id, nlp_process_obj=self.nlp_process_obj)
@@ -180,7 +184,7 @@ def main(args):
     nlp_process_obj = NLPProcess()
     nlp_process_obj.load_nlp_model(verbose=args.verbose)
     doc_obj = Document(nlp_process_obj=nlp_process_obj)
-    output_dict = doc_obj.parse_xml(xml_file=xml_file, flag_cell_span=args.flag_cell_span, verbose=args.verbose)
+    output_dict = doc_obj.parse_xml(xml_file=xml_file, table_id=args.table_id, flag_cell_span=args.flag_cell_span, verbose=args.verbose)
 
     submit_dir = os.path.join(os.path.dirname(__file__), "../output/res")
     if not os.path.exists(submit_dir):
@@ -199,6 +203,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", action="store", default="C:/KA/data/NLP/statement_verification_evidence_finding/train_manual_v1.3.2/v1.3.2/ref/", dest="data_dir")
     parser.add_argument("--filename", action="store", dest="filename")
+    parser.add_argument("--table_id", action="store", default=None, dest="table_id", help="Process specified table only.")
     parser.add_argument("--flag_cell_span", action="store_true", default=False, dest="flag_cell_span",
                         help="bool to indicate whether row, col span is mentioned for each cell. data version 1.3 introduces span.")
     parser.add_argument("--flag_prettify", action="store_true", default=False, dest="flag_prettify", help="pretty print XML")
