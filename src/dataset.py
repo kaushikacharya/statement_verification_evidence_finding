@@ -27,12 +27,14 @@ class Dataset:
         n_tables_dataset = 0
         n_statements_dataset = 0
         n_statements_with_column_matched_dataset = 0
+        n_statements_table_frequency_map_dataset = dict()
+        confusion_dict_dataset = dict()
         n_files = 0
 
         if submit_dir and not os.path.exists(submit_dir):
             os.makedirs(submit_dir)
 
-        for xml_file_path in tqdm(glob.glob(os.path.join(data_dir, "*.xml"))):
+        for xml_file_path in glob.iglob(os.path.join(data_dir, "*.xml")): # tqdm(glob.glob())
             print("\n{}".format(xml_file_path))
             doc_obj = Document(nlp_process_obj=self.nlp_process_obj)
             doc_output_dict = doc_obj.parse_xml(xml_file=xml_file_path, flag_cell_span=flag_cell_span, verbose=False)
@@ -40,8 +42,10 @@ class Dataset:
             failed_tables_doc = doc_output_dict["failed_tables_doc"]
             n_tables_doc = doc_output_dict["n_tables_doc"]
             n_statements_doc = doc_output_dict["n_statements_doc"]
+            n_statements_table_frequency_map_doc = doc_output_dict["n_statements_table_frequency_map_doc"]
             n_statements_with_column_matched_doc = doc_output_dict["n_statements_with_column_matched_doc"]
             doc_output_tree = doc_output_dict["doc_output_tree"]
+            confusion_dict_doc = doc_output_dict["confusion_dict_doc"]
 
             if submit_dir:
                 submit_filepath = os.path.join(submit_dir, os.path.basename(xml_file_path))
@@ -50,13 +54,39 @@ class Dataset:
 
             if len(failed_tables_doc) > 0:
                 failed_tables_dataset.append({os.path.basename(xml_file_path): failed_tables_doc})
+
             n_tables_dataset += n_tables_doc
             n_statements_dataset += n_statements_doc
+
+            for n_statements in n_statements_table_frequency_map_doc:
+                if n_statements not in n_statements_table_frequency_map_dataset:
+                    n_statements_table_frequency_map_dataset[n_statements] = 0
+
+                n_statements_table_frequency_map_dataset[n_statements] += n_statements_table_frequency_map_doc[n_statements]
+
             n_statements_with_column_matched_dataset += n_statements_with_column_matched_doc
+
+            for type_truth in confusion_dict_doc:
+                if type_truth not in confusion_dict_dataset:
+                    confusion_dict_dataset[type_truth] = dict()
+
+                for type_predicted in confusion_dict_doc[type_truth]:
+                    if type_predicted not in confusion_dict_dataset[type_truth]:
+                        confusion_dict_dataset[type_truth][type_predicted] = 0
+
+                    confusion_dict_dataset[type_truth][type_predicted] += confusion_dict_doc[type_truth][type_predicted]
+
             n_files += 1
 
+        print("\n\n------------------------ Summary ---------------------")
         print("Failed tables: {}".format(failed_tables_dataset))
-        print("Processed {} files :: tables: {} :: statements: {} (with column(s) matched: {})".format(n_files, n_tables_dataset, n_statements_dataset, n_statements_with_column_matched_dataset))
+        print("Processed {} files :: tables: {} :: statements: {} (with column(s) matched: {})".format(
+            n_files, n_tables_dataset, n_statements_dataset, n_statements_with_column_matched_dataset))
+        print("statements count frequency map")
+        for n_statements in sorted(n_statements_table_frequency_map_dataset.keys()):
+            print("\t{}: {} tables".format(n_statements, n_statements_table_frequency_map_dataset[n_statements]))
+        print("Confusion dict:")
+        print(confusion_dict_dataset)
 
 def main(args):
     nlp_process_obj = NLPProcess()

@@ -113,6 +113,10 @@ class Document:
         n_statements_doc = 0
         n_statements_with_column_matched_doc = 0
         n_tables_doc = 0
+        # maps frequency of tables for statements count
+        # i.e. for key "x", value corresponding to it mentions how many tables are there with "x" statements
+        n_statements_table_frequency_map_doc = dict()
+        confusion_dict_doc = dict()
 
         doc_output_elem = ET.Element("document")
         summary_doc = list()
@@ -129,20 +133,39 @@ class Document:
                 table_obj = Table(doc_id=self.doc_id, nlp_process_obj=self.nlp_process_obj)
                 table_obj.parse_xml(table_item=table_item, flag_cell_span=flag_cell_span, verbose=verbose)
                 statement_id_predict_type_map = table_obj.process_table(verbose=verbose)
+                n_statements_table = len(table_obj.statements)
                 # Build the table element for submit
                 table_output_elem = table_obj.build_table_element(ref_table_elem=table_item, statement_id_predict_type_map=statement_id_predict_type_map)
                 # Append the table element into document element
                 doc_output_elem.append(table_output_elem)
-                n_statements_doc += len(table_obj.statements)
+                n_statements_doc += n_statements_table
                 n_tables_doc += 1
 
+                if n_statements_table not in n_statements_table_frequency_map_doc:
+                    n_statements_table_frequency_map_doc[n_statements_table] = 0
+
+                n_statements_table_frequency_map_doc[n_statements_table] += 1
+
                 summary_table = dict()
-                for stmnt_i in range(len(table_obj.statements)):
+                for stmnt_i in range(n_statements_table):
                     summary_table[table_obj.statements[stmnt_i].id] = \
                         {'text': table_obj.statements[stmnt_i].text, 'type_ground_truth': table_obj.statements[stmnt_i].type}
                     if table_obj.statements[stmnt_i].columns_matched:
                         n_statements_with_column_matched_doc += 1
 
+                    type_truth = table_obj.statements[stmnt_i].type
+                    if type_truth not in confusion_dict_doc:
+                        confusion_dict_doc[type_truth] = dict()
+
+                    assert table_obj.statements[stmnt_i].id in statement_id_predict_type_map, "predicted type missing for statement id: {}".format(table_obj.statements[stmnt_i].id)
+                    type_predicted = statement_id_predict_type_map[table_obj.statements[stmnt_i].id]
+                    if type_predicted is None:
+                        type_predicted = "unknown"
+
+                    if type_predicted not in confusion_dict_doc[type_truth]:
+                        confusion_dict_doc[type_truth][type_predicted] = 0
+
+                    confusion_dict_doc[type_truth][type_predicted] += 1
 
                 for statements_elem in table_output_elem.findall('statements'):
                     for statement_elem in statements_elem.findall('statement'):
@@ -173,8 +196,10 @@ class Document:
         output_dict["failed_tables_doc"] = failed_tables
         output_dict["n_tables_doc"] = n_tables_doc
         output_dict["n_statements_doc"] = n_statements_doc
+        output_dict["n_statements_table_frequency_map_doc"] = n_statements_table_frequency_map_doc
         output_dict["n_statements_with_column_matched_doc"] = n_statements_with_column_matched_doc
         output_dict["doc_output_tree"] = doc_output_tree
+        output_dict["confusion_dict_doc"] = confusion_dict_doc
 
         return output_dict
 
