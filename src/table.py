@@ -430,6 +430,7 @@ class Table:
                     match_length = optional_token_begin if optional_token_begin else len(self.cell_info_dict[row_index][col_index])
                     cur_column_matched_tokens_dict = dict()
                     for token_index_stmnt in range(len(self.statements[stmnt_i].tokens) - match_length + 1):
+                        # N.B. token_i variable could be confusing. It refers to token index in the column name cell and not of the statement tokens.
                         token_i = 0
                         flag_col_cell_matched = True
                         while token_i < match_length:
@@ -442,24 +443,32 @@ class Table:
                             token_i += 1
 
                         if flag_col_cell_matched:
-                            flag_col_cell_full_matched = True
-                            if optional_token_begin:
-                                # check if it matches full column name
-                                if token_index_stmnt + len(self.cell_info_dict[row_index][col_index]) > len(self.statements[stmnt_i].tokens):
-                                    flag_col_cell_full_matched = False
-                                else:
-                                    token_j = token_i + 1
-                                    while token_j < len(self.cell_info_dict[row_index][col_index]):
-                                        if (self.statements[stmnt_i].tokens[token_index_stmnt + token_j].text.lower() !=
-                                                self.cell_info_dict[row_index][col_index][token_j].text.lower()) and \
-                                                (self.statements[stmnt_i].tokens[token_index_stmnt + token_j].lemma.lower() !=
-                                                     self.cell_info_dict[row_index][col_index][token_j].lemma.lower()):
-                                            flag_col_cell_full_matched = False
-                                            break
-                                        token_j += 1
 
-                                    if flag_col_cell_full_matched:
-                                        token_i = token_j
+                            if optional_token_begin:
+                                # The optional part of the column were not matched above with statement tokens.
+                                #  Here we would continue matching that part as long as it matched.
+                                # case (a): All the column tokens get matched.
+                                # case (b): Matches a certain portion of optional portion.
+                                #       e.g. 20758.xml, Table 1
+                                #       Non-ascii tokens are present in column name but absent in statement.
+                                #       This could be because these non-ascii tokens for columns were scraped from web
+                                #          but statements were typed by volunteers.
+                                flag_col_cell_full_matched = False
+
+                                while (token_i < min(len(self.cell_info_dict[row_index][col_index]),
+                                                     len(self.statements[stmnt_i].tokens)-token_index_stmnt)):
+                                    # Second argument of min ensures that we don't go beyond the statement tokens
+                                    if (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].text.lower() !=
+                                            self.cell_info_dict[row_index][col_index][token_i].text.lower()) and \
+                                            (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].lemma.lower() !=
+                                                 self.cell_info_dict[row_index][col_index][token_i].lemma.lower()):
+                                        break
+                                    token_i += 1
+
+                                if token_i == len(self.cell_info_dict[row_index][col_index]):
+                                    flag_col_cell_full_matched = True
+                            else:
+                                flag_col_cell_full_matched = True
 
                             if 'token_index_range_statement' not in cur_column_matched_tokens_dict:
                                 cur_column_matched_tokens_dict['token_index_range_statement'] = []
@@ -572,9 +581,48 @@ class Table:
 
             statement_type_predict = None
 
+            # candidate: <numeric value of column mentioned(single data row)>
+            #       case (a): <column name> value is <numeric>  e.g. 20758.xml, Table 1, Statement id=5
+            #       case (b): <numeric> is the value of/for <column name>  e.g. 20758.xml, Table 1, Statement id=2
+            if (len(column_matched_tokens_dict) == 1) and (self.table_data_end_row_index - self.table_data_start_row_index == 1):
+                col_index = list(column_matched_tokens_dict.keys())[0]
+                if is_numeric_dtype(self.df.iloc[:, col_index]):
+                    numeric_value = None
+                    for token_i in range(len(self.statements[stmnt_i].tokens)):
+                        if self.statements[stmnt_i].tokens[token_i].part_of_speech_coarse != "NUM":
+                            continue
+                        if self.statements[stmnt_i].tokens[token_i].dependency_tag in ["attr", "nsubj"]:
+                            head_token_index = self.statements[stmnt_i].tokens[token_i].head_index
+                            if self.statements[stmnt_i].tokens[head_token_index].part_of_speech_coarse == "AUX":
+                                other_child_dep_tag = "nsubj" if self.statements[stmnt_i].tokens[token_i].dependency_tag == "attr" else "attr"
+                                for child_token_index in self.statements[stmnt_i].tokens[head_token_index].children_index_arr:
+                                    if child_token_index == token_i:
+                                        continue
+                                    if self.statements[stmnt_i].tokens[child_token_index].lemma == "value" and \
+                                                    self.statements[stmnt_i].tokens[child_token_index].dependency_tag == other_child_dep_tag:
+                                        _, numeric_value = is_number(self.statements[stmnt_i].tokens[token_i].text)
+
+                    if numeric_value is not None:
+                        if verbose:
+                            print("\tcandidate: numeric value of column mentioned(single data row)")
+
+                        if numeric_value == self.df.iloc[0, col_index]:
+                            statement_type_predict = "entailed"
+                            if verbose:
+                                print("\t\tcandidate verified")
+                        else:
+                            statement_type_predict = "refuted"
+                            if verbose:
+                                print("\t\tcandidate failed to verify")
+
+                        # assign evidence
+                        for row_idx in range(self.table_data_end_row_index):
+                            if row_idx in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_idx]:
+                                self.cell_evidence_dict[row_idx][col_index].add(self.statements[stmnt_i].id)
+
             # candidate: <ranges from NUM to NUM>
             # TODO Handle when unit also is mentioned as part of NUM
-            if len(column_matched_tokens_dict) > 0:
+            if statement_type_predict is None and len(column_matched_tokens_dict) > 0:
                 for token_i in range(len(self.statements[stmnt_i].tokens)-4):
                     if (self.statements[stmnt_i].tokens[token_i].lemma == "range") and \
                             (self.statements[stmnt_i].tokens[token_i+1].lemma == "from") and \
