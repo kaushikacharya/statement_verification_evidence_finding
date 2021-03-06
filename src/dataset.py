@@ -11,6 +11,7 @@ import argparse
 import glob
 import io
 import os
+import shutil
 import traceback
 
 from tqdm import tqdm
@@ -31,7 +32,11 @@ class Dataset:
         confusion_dict_dataset = dict()
         n_files = 0
 
-        if submit_dir and not os.path.exists(submit_dir):
+        if submit_dir:
+            # First delete the submit directory if exists
+            if os.path.exists(submit_dir):
+                shutil.rmtree(submit_dir)
+            # Then create the submit directory
             os.makedirs(submit_dir)
 
         for xml_file_path in glob.iglob(os.path.join(data_dir, "*.xml")): # tqdm(glob.glob())
