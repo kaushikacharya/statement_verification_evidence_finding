@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from math import floor
 import re
 from xml.dom import minidom
 import xml.etree.ElementTree as ET
@@ -66,3 +67,109 @@ def prettify(elem):
     rough_string = ET.tostring(root, 'utf-8')
     reparsed = minidom.parseString(rough_string)
     return ET.ElementTree(ET.fromstring(reparsed.toprettyxml(indent="\t")))
+
+
+def jaro_similarity(s1, s2):
+    """Jaro Similarity
+
+        Parameters
+        ----------
+        s1 : str
+        s2 : str
+
+        References
+        ----------
+        https://en.wikipedia.org/wiki/Jaro%E2%80%93Winkler_distance
+        https://www.geeksforgeeks.org/jaro-and-jaro-winkler-similarity/
+            - Implementation
+    """
+
+    # If the strings are equal
+    if s1 == s2:
+        return 1.0
+
+    if s1 == "" or s2 == "":
+        return 0.0
+
+    # Length of two strings
+    len1 = len(s1)
+    len2 = len(s2)
+
+    # Maximum distance up to which matching is allowed.
+    # Two characters from s1 and s2 are considered for matching only if its within max_dist characters away.
+    max_dist = (max(len(s1), len(s2)) // 2) - 1
+
+    # Count of matches
+    match = 0
+
+    # Hash for matches
+    hash_s1 = [0] * len(s1)
+    hash_s2 = [0] * len(s2)
+
+    # Traverse through the first string
+    for i in range(len1):
+        # Check if there is any matches
+        for j in range(max(0, i - max_dist), min(len2, i + max_dist + 1)):
+            # If there is a match
+            if (s1[i] == s2[j]) and (hash_s2[j] == 0):
+                hash_s1[i] = 1
+                hash_s2[j] = 1
+                match += 1
+                break
+
+    # If there is no match
+    if match == 0:
+        return 0.0
+
+    # Number of transpositions
+    t = 0
+    point = 0
+
+    # Count number of occurrences
+    # where two characters match but
+    # there is a third matched character
+    # in between the indices
+    for i in range(len1):
+        if hash_s1[i]:
+            # Find the next matched character
+            # in second string
+            while hash_s2[point] == 0:
+                point += 1
+
+            if s1[i] != s2[point]:
+                point += 1
+                t += 1
+            else:
+                point += 1
+
+        t /= 2
+
+    # Return the Jaro Similarity
+    return (match / len1 + match / len2 + (match - t) / match) / 3.0
+
+def jaro_winkler_similarity(s1, s2, jaro_sim, max_prefix_length=4, prefix_scaling_factor=0.1):
+    """Jaro-Winkler similarity
+
+        Parameters
+        ----------
+        s1 : str
+        s2 : str
+        jaro_sim : float (Jaro similarity)
+        max_prefix_length : int (Max prefix length considered)
+        prefix_scaling_factor : float
+    """
+
+    # Find the common prefix length
+    prefix_len = 0
+
+    for i in range(min(len(s1), len(s2))):
+        if s1[i] == s2[i]:
+            prefix_len += 1
+        else:
+            break
+
+    prefix_len = min(max_prefix_length, prefix_len)
+
+    jaro_winkler_sim = jaro_sim + prefix_len*prefix_scaling_factor*(1 - jaro_sim)
+
+    return jaro_winkler_sim
