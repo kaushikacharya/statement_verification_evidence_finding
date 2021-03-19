@@ -18,11 +18,13 @@ from src.utils import *
 
 
 class Token:
-    def __init__(self, text, lemma=None, normalized_text=None, part_of_speech_coarse=None,
+    def __init__(self, text, lemma=None, normalized_text=None, start_char_offset=None, part_of_speech_coarse=None,
                  part_of_speech_fine_grained=None, dependency_tag=None, head_index=None, children_index_arr=None):
         self.text = text
         self.lemma = lemma
         self.normalized_text = normalized_text
+        # character offset of the token in the parent document
+        self.start_char_offset = start_char_offset
         self.part_of_speech_coarse = part_of_speech_coarse
         self.part_of_speech_fine_grained = part_of_speech_fine_grained
         self.dependency_tag = dependency_tag
@@ -62,7 +64,8 @@ class Table:
         self.statements = []
 
     def parse_xml(self, table_item, flag_cell_span=True, verbose=False):
-        """Parse table element of xml
+        """Parse table element of xml.
+            Identify the table rows for column names.
 
             Parameters
             ----------
@@ -143,6 +146,7 @@ class Table:
                 doc_cell = self.nlp_process_obj.construct_doc(text=cell_text)
                 for token in doc_cell:
                     token_obj = Token(text=token.text, lemma=token.lemma_, normalized_text=token.norm_,
+                                      start_char_offset=token.idx,
                                       part_of_speech_coarse=token.pos_, part_of_speech_fine_grained=token.tag_,
                                       dependency_tag=token.dep_, head_index=token.head.i,
                                       children_index_arr=[child.i for child in token.children])
@@ -317,6 +321,7 @@ class Table:
                 statement_obj.tokens = []
                 for token in doc_statement:
                     token_obj = Token(text=token.text, lemma=token.lemma_, normalized_text=token.norm_,
+                                      start_char_offset=token.idx,
                                       part_of_speech_coarse=token.pos_, part_of_speech_fine_grained=token.tag_,
                                       dependency_tag=token.dep_, head_index=token.head.i,
                                       children_index_arr=[child.i for child in token.children])
@@ -340,24 +345,11 @@ class Table:
                 self.statements.append(statement_obj)
 
     def process_table(self, verbose=False):
-        """Process table for statement verification"""
+        """Process table for statement verification and evidence finding"""
         if False:
-            if isinstance(self.df.columns, pd.MultiIndex):
-                return
-
             column_names = [x for x in self.df.columns if x]
             if len(column_names) == 0:
                 return
-
-        # regex pattern to search for column names
-        # N.B. Fails when words have alphanumeric characters. e.g. Column: Pmid [m]   20856.xml
-        if False:
-            regex_pattern = r'('
-            for i, column_name in enumerate(column_names):
-                if i > 0:
-                    regex_pattern += r'|'
-                regex_pattern += r'\b{}\b'.format(column_name)
-            regex_pattern += r')'
 
         # key: statement id  value: predicted type
         statement_id_predict_type_map = dict()
@@ -371,34 +363,8 @@ class Table:
                     stmnt_i, self.statements[stmnt_i].id, self.statements[stmnt_i].type, self.statements[stmnt_i].text))
 
             # Identify columns in statement
-            if False:
-                columns_matched = re.findall(pattern=regex_pattern, string=self.statements[stmnt_i].text, flags=re.I)
-                if len(columns_matched) > 0:
-                    print("\tColumns matched: {}".format(columns_matched))
-
-            if False:
-                statement_text_lower = self.statements[stmnt_i].text.lower()
-                columns_matched = []
-                for column_name in column_names:
-                    start_pos_arr = [i for i in range(len(statement_text_lower)) if statement_text_lower.startswith(column_name.lower(), i)]
-                    flag_column_matched = False
-                    for start_pos in start_pos_arr:
-                        if start_pos > 0 and statement_text_lower[start_pos-1] != " ":
-                            continue
-                        end_pos = start_pos + len(column_name)
-                        if end_pos < len(statement_text_lower) and statement_text_lower[end_pos] != " ":
-                            continue
-                        flag_column_matched = True
-
-                    if flag_column_matched:
-                        columns_matched.append(column_name)
-                        print("\tColumn matched: {}".format(column_name))
-
-                if columns_matched:
-                    self.statements[stmnt_i].columns_matched = columns_matched
 
             # iterate over the table cell corresponding to the column headers
-            # columns_matched = []
             flag_col_matched_arr = [None for i in range(len(self.df.columns))]
             # TODO Introduce column matching score to allow partial matches
             column_matched_tokens_dict = dict()
@@ -443,10 +409,9 @@ class Table:
                             token_i += 1
 
                         if flag_col_cell_matched:
-
                             if optional_token_begin:
                                 # The optional part of the column were not matched above with statement tokens.
-                                #  Here we would continue matching that part as long as it matched.
+                                #  Here we would continue matching that part as long as it matches.
                                 # case (a): All the column tokens get matched.
                                 # case (b): Matches a certain portion of optional portion.
                                 #       e.g. 20758.xml, Table 1
@@ -474,10 +439,9 @@ class Table:
                                 cur_column_matched_tokens_dict['token_index_range_statement'] = []
                             cur_column_matched_tokens_dict['token_index_range_statement'].append((token_index_stmnt, token_index_stmnt+token_i))
 
-                            col_info = (col_index, token_index_stmnt, token_index_stmnt+token_i)
-                            # columns_matched.append(col_info)
-                            col_cell_text = " ".join([x.text for x in self.cell_info_dict[row_index][col_index]])
                             if verbose:
+                                col_info = (col_index, token_index_stmnt, token_index_stmnt + token_i)
+                                col_cell_text = " ".join([x.text for x in self.cell_info_dict[row_index][col_index]])
                                 print("\tColumn cell matched: name: {} :: col info: {}".format(col_cell_text, col_info))
                                 if not flag_col_cell_full_matched:
                                     print("\t\tPartial matched")
@@ -896,6 +860,58 @@ class Table:
                             statement_type_predict = "entailed"
                         else:
                             statement_type_predict = "refuted"
+
+            # candidate: count columns in the table
+            #   TODO Verify if column names also mentioned
+            if statement_type_predict is None:
+                for token_index_stmnt in range(len(self.statements[stmnt_i].tokens)):
+                    cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
+                    if cur_token.part_of_speech_coarse == "NUM" and cur_token.dependency_tag == "nummod":
+                        head_token = self.statements[stmnt_i].tokens[cur_token.head_index]
+                        if head_token.lemma.lower() != "column":
+                            continue
+
+                        # consider head token only if its not part of any table column
+                        flag_stmnt_head_token_belongs_to_column = False
+
+                        for col_index in column_matched_tokens_dict:
+                            for token_index_start_column, token_index_end_column in column_matched_tokens_dict[col_index]:
+                                if cur_token.head_index in range(token_index_start_column, token_index_end_column):
+                                    flag_stmnt_head_token_belongs_to_column = True
+                                    break
+
+                        if flag_stmnt_head_token_belongs_to_column:
+                            continue
+
+                        flag_numeric, statement_token_value = is_number(cur_token.text)
+                        flag_match = None
+                        if flag_numeric:
+                            if int(statement_token_value) == statement_token_value:
+                                flag_match = statement_token_value == len(self.df.columns)
+                        else:
+                            # convert word to numeric value
+                            try:
+                                statement_token_value_numeric = w2n.word_to_num(statement_token_value)
+                                flag_match = statement_token_value_numeric == len(self.df.columns)
+                            except:
+                                continue
+
+                        if flag_match is True:
+                            statement_type_predict = "entailed"
+                        elif flag_match is False:
+                            statement_type_predict = "refuted"
+
+                        # assign evidence
+                        if flag_match is not None:
+                            for row_idx in range(self.table_data_start_row_index):
+                                if row_idx not in self.cell_evidence_dict:
+                                    continue
+                                for col_idx in range(len(self.df.columns)):
+                                    if col_idx in self.cell_evidence_dict[row_idx]:
+                                        self.cell_evidence_dict[row_idx][col_idx].add(self.statements[stmnt_i].id)
+
+                            if verbose:
+                                print("\tNumber of columns in table: {} :: count mentioned in statement: {} :: match: {}".format(len(self.df.columns), cur_token.text, flag_match))
 
             # candidate: count rows for column
             if len(column_matched_tokens_dict) == 1 and statement_type_predict is None:
