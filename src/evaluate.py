@@ -24,7 +24,7 @@ def mkdir(d):
     if not os.path.exists(d):
         os.makedirs(d)
 
-if (os.name == "nt"):
+if os.name == "nt":
     filesep = '\\'
 else:
     filesep = '/'
@@ -45,8 +45,9 @@ def read_xml(filename, type="prediction", verbose=False):
         if verbose:
             print("Reading table {} in file {}".format(table["id"], filename))
         result_dict[table["id"]] = {}
+        # https://stackoverflow.com/questions/5015483/test-if-an-attribute-is-present-in-a-tag-in-beautifulsoup (Lucas S.'s answer)
         for statement in table.find_all("statement"):
-            result_dict[table["id"]][statement["id"]] = {"type": statement["type"], "evidence":{}}
+            result_dict[table["id"]][statement["id"]] = {"type": statement["type"], "evidence":{}, "text": statement["text"] if statement.has_attr("text") else None}
         for row in table.find_all("row"):
             for cell in row.find_all("cell"):
                 for evidence in cell.find_all("evidence"):
@@ -124,8 +125,10 @@ def main(args):
             else:
                 raise IOError('No solution XML files detected in folder, please check your submission')
 
-        csv_output = StringIO()
-        csv_writer = writer(csv_output)
+        csv_table_output = StringIO()
+        csv_table_writer = writer(csv_table_output)
+        csv_statement_output = StringIO()
+        csv_statement_writer = writer(csv_statement_output)
 
         task_b_missing_flag = False
         # iterate over each of the documents
@@ -146,7 +149,8 @@ def main(args):
             solution = read_xml(solution_file, type="solution", verbose=args.verbose)
             prediction = read_xml(predict_file, type="prediction", verbose=args.verbose)
 
-            if (len(solution) != len(prediction)) : raise ValueError(
+            if len(solution) != len(prediction):
+                raise ValueError(
                 "There are {} tables for this file but only {} are predicted".format(len(solution), len(prediction)))
 
             # iterate over each of the table in the current document
@@ -167,6 +171,7 @@ def main(args):
                     if statement_id not in prediction[table_id]:
                         raise ValueError(
                             "Statement with id {} in Table with id {} is missing".format(statement_id, table_id))
+
                     # Append results
                     if statement_res["type"] == "entailed":
                         scores_task_a_2way_table_list["gt"].append(1)
@@ -216,6 +221,11 @@ def main(args):
 
                         scores_task_b_f1_table.append(max(f1_scores))
 
+                    if statement_res["type"] != prediction[table_id][statement_id]["type"]:
+                        csv_statement_row_data = [os.path.basename(solution_file), table_id, statement_id, statement_res["type"],
+                                                  prediction[table_id][statement_id]["type"], statement_res["text"]]
+                        csv_statement_writer.writerow(csv_statement_row_data)
+
                 # compute F1 score for the current table
                 twoway_f1 = f1_scoring(scores_task_a_2way_table_list)
                 threeway_f1 = f1_scoring(scores_task_a_3way_table_list)
@@ -226,7 +236,7 @@ def main(args):
                 scores_task_a_3way_list_file.append(threeway_f1)
 
                 csv_row_data = [os.path.basename(solution_file), table_id, "{:.3f}".format(twoway_f1), "{:.3f}".format(threeway_f1), len(scores_task_a_3way_table_list["gt"])]
-                csv_writer.writerow(csv_row_data)
+                csv_table_writer.writerow(csv_row_data)
 
                 if task_b_missing_flag and len(scores_task_b_f1_table) > 0:
                     raise ValueError("Some evidence is missing for table {}, but some are also provided. "
@@ -256,21 +266,31 @@ def main(args):
         output_file.close()
 
         # Write table results in a csv
-        csv_output.seek(0)
+        csv_table_output.seek(0)
         df_columns = ["File", "Table", "Two-way F1", "Three-way F1", "n_statements"]
-        results_df = pd.read_csv(filepath_or_buffer=csv_output, names=df_columns)
+        results_df = pd.read_csv(filepath_or_buffer=csv_table_output, names=df_columns)
 
         # https://stackoverflow.com/questions/3191528/csv-in-python-adding-an-extra-carriage-return-on-windows
         #   - Explains why newline="" is needed to avoid additional newline character
-        with io.open(os.path.join(output_dir, args.output_csv), mode="w", newline="") as fd:
+        with io.open(os.path.join(output_dir, args.output_table_csv), mode="w", newline="") as fd:
             results_df.to_csv(path_or_buf=fd, index=False)
+
+        # Write statement level results in a csv
+        csv_statement_output.seek(0)
+        df_columns = ["File", "Table", "StatementId", "ground_truth_type", "predict_type", "text"]
+        results_statement_df = pd.read_csv(filepath_or_buffer=csv_statement_output, names=df_columns)
+
+        with io.open(os.path.join(output_dir, args.output_statement_csv), mode="w", newline="") as fd:
+            results_statement_df.to_csv(path_or_buf=fd, index=False)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_dir", action="store", default="C:/KA/data/NLP/statement_verification_evidence_finding/train_manual_v1.3.2/v1.3.2/",
                         dest="input_dir", help="Directory containing a) ground truth data in res subdirectory   b) predicted data in ref subdirectory")
     parser.add_argument("--output_dir", action="store", default="./output/score/", dest="output_dir")
-    parser.add_argument("--output_csv", action="store", default="score_df.csv", dest="output_csv")
+    parser.add_argument("--output_table_csv", action="store", default="score_table_df.csv", dest="output_table_csv", help="Write scores for each table")
+    parser.add_argument("--output_statement_csv", action="store", default="type_statement_df.csv", dest="output_statement_csv",
+                        help="Write truth and predict type for each statement")
     parser.add_argument("--verbose", action="store_true", default=False, dest="verbose")
     args = parser.parse_args()
 
