@@ -437,11 +437,22 @@ class Table:
 
                             if 'token_index_range_statement' not in cur_column_matched_tokens_dict:
                                 cur_column_matched_tokens_dict['token_index_range_statement'] = []
+                                cur_column_matched_tokens_dict['score'] = []
+
                             cur_column_matched_tokens_dict['token_index_range_statement'].append((token_index_stmnt, token_index_stmnt+token_i))
+                            cur_column_matched_tokens_dict['score'].append(1.0)
 
                             if verbose:
                                 col_info = (col_index, token_index_stmnt, token_index_stmnt + token_i)
-                                col_cell_text = " ".join([x.text for x in self.cell_info_dict[row_index][col_index]])
+
+                                col_cell_text = ""
+                                prev_char_offset = 0
+                                for x in self.cell_info_dict[row_index][col_index]:
+                                    col_cell_text += " "*(x.start_char_offset - prev_char_offset)
+                                    col_cell_text += x.text
+                                    prev_char_offset = x.start_char_offset + len(x.text)
+
+                                # col_cell_text = " ".join([x.text for x in self.cell_info_dict[row_index][col_index]])
                                 print("\tColumn cell matched: name: {} :: col info: {}".format(col_cell_text, col_info))
                                 if not flag_col_cell_full_matched:
                                     print("\t\tPartial matched")
