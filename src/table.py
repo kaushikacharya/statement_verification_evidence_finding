@@ -62,6 +62,7 @@ class Table:
         # dict of dict: keys: [row_index][col_index],  values: set of statement ids for which the cell is relevant
         self.cell_evidence_dict = dict()
         self.statements = []
+        self.jaro_similarity_threshold = 0.85
 
     def parse_xml(self, table_item, flag_cell_span=True, verbose=False):
         """Parse table element of xml.
@@ -296,9 +297,10 @@ class Table:
 
         output_dir = None
         if verbose:
-            m = re.search(r'\d+', self.table_id)
-            assert m, "Table id: {} does not contain numerals".format(self.table_id)
-            output_dir = os.path.join(os.path.dirname(__file__), "../output/debug", self.doc_id, m.group(0))
+            table_id_tokens = self.table_id.split()
+            # m = re.search(r'\d+', self.table_id)
+            # assert m, "Table id: {} does not contain numerals".format(self.table_id)
+            output_dir = os.path.join(os.path.dirname(__file__), "../output/debug", self.doc_id, table_id_tokens[-1])  # m.group(0)
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
 
@@ -344,12 +346,14 @@ class Table:
 
                 self.statements.append(statement_obj)
 
-    def process_table(self, verbose=False):
-        """Process table for statement verification and evidence finding"""
-        if False:
-            column_names = [x for x in self.df.columns if x]
-            if len(column_names) == 0:
-                return
+    def process_table(self, flag_approx_string_match=False, verbose=False):
+        """Process table for statement verification and evidence finding
+
+            Parameters
+            ----------
+            flag_approx_string_match : bool
+            verbose : bool
+        """
 
         # key: statement id  value: predicted type
         statement_id_predict_type_map = dict()
@@ -393,20 +397,47 @@ class Table:
                                     break
                                 token_i += 1
 
-                    match_length = optional_token_begin if optional_token_begin else len(self.cell_info_dict[row_index][col_index])
+                    match_token_length = optional_token_begin if optional_token_begin else len(self.cell_info_dict[row_index][col_index])
+
+                    col_cell_match_text = ""
+                    prev_char_offset = 0
+                    for token_i in range(match_token_length):
+                        col_cell_match_text += " "*(self.cell_info_dict[row_index][col_index][token_i].start_char_offset - prev_char_offset)
+                        col_cell_match_text += self.cell_info_dict[row_index][col_index][token_i].text
+                        prev_char_offset = self.cell_info_dict[row_index][col_index][token_i].start_char_offset + \
+                                           len(self.cell_info_dict[row_index][col_index][token_i].text)
+
                     cur_column_matched_tokens_dict = dict()
-                    for token_index_stmnt in range(len(self.statements[stmnt_i].tokens) - match_length + 1):
+                    for token_index_stmnt in range(len(self.statements[stmnt_i].tokens) - match_token_length + 1):
+                        # token_index_match_end_stmnt = token_index_stmnt + match_token_length
+                        char_pos_match_stmnt_begin = self.statements[stmnt_i].tokens[token_index_stmnt].start_char_offset
+                        char_pos_match_stmnt_end = self.statements[stmnt_i].tokens[token_index_stmnt + match_token_length - 1].start_char_offset + \
+                                                   len(self.statements[stmnt_i].tokens[token_index_stmnt + match_token_length - 1].text)
+                        stmnt_match_text = self.statements[stmnt_i].text[char_pos_match_stmnt_begin: char_pos_match_stmnt_end]
+
                         # N.B. token_i variable could be confusing. It refers to token index in the column name cell and not of the statement tokens.
                         token_i = 0
-                        flag_col_cell_matched = True
-                        while token_i < match_length:
-                            if (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].text.lower() !=
-                                    self.cell_info_dict[row_index][col_index][token_i].text.lower()) and \
-                                    (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].lemma.lower() !=
-                                         self.cell_info_dict[row_index][col_index][token_i].lemma.lower()):
+                        jaro_sim = None
+                        if flag_approx_string_match:
+                            jaro_sim = jaro_similarity(col_cell_match_text.lower(), stmnt_match_text.lower())
+
+                            if jaro_sim < self.jaro_similarity_threshold:
                                 flag_col_cell_matched = False
-                                break
-                            token_i += 1
+                            else:
+                                flag_col_cell_matched = True
+
+                            # update token_i
+                            token_i = match_token_length
+                        else:
+                            flag_col_cell_matched = True
+                            while token_i < match_token_length:
+                                if (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].text.lower() !=
+                                        self.cell_info_dict[row_index][col_index][token_i].text.lower()) and \
+                                        (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].lemma.lower() !=
+                                             self.cell_info_dict[row_index][col_index][token_i].lemma.lower()):
+                                    flag_col_cell_matched = False
+                                    break
+                                token_i += 1
 
                         if flag_col_cell_matched:
                             if optional_token_begin:
@@ -419,6 +450,7 @@ class Table:
                                 #       This could be because these non-ascii tokens for columns were scraped from web
                                 #          but statements were typed by volunteers.
                                 flag_col_cell_full_matched = False
+                                token_j = token_i
 
                                 while (token_i < min(len(self.cell_info_dict[row_index][col_index]),
                                                      len(self.statements[stmnt_i].tokens)-token_index_stmnt)):
@@ -428,10 +460,25 @@ class Table:
                                             (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].lemma.lower() !=
                                                  self.cell_info_dict[row_index][col_index][token_i].lemma.lower()):
                                         break
+                                    else:
+                                        # update column cell matched text
+                                        col_cell_match_text += " " * (self.cell_info_dict[row_index][col_index][token_i].start_char_offset - prev_char_offset)
+                                        col_cell_match_text += self.cell_info_dict[row_index][col_index][token_i].text
+                                        prev_char_offset = self.cell_info_dict[row_index][col_index][token_i].start_char_offset + \
+                                                           len(self.cell_info_dict[row_index][col_index][token_i].text)
+
                                     token_i += 1
 
                                 if token_i == len(self.cell_info_dict[row_index][col_index]):
                                     flag_col_cell_full_matched = True
+
+                                if token_i > token_j:
+                                    # update statement matched text
+                                    char_pos_match_stmnt_end = self.statements[stmnt_i].tokens[token_index_stmnt + token_i - 1].start_char_offset + \
+                                                               len(self.statements[stmnt_i].tokens[token_index_stmnt + token_i - 1].text)
+                                    stmnt_match_text = self.statements[stmnt_i].text[char_pos_match_stmnt_begin: char_pos_match_stmnt_end]
+                                    if flag_approx_string_match:
+                                        jaro_sim = jaro_similarity(col_cell_match_text.lower(), stmnt_match_text.lower())
                             else:
                                 flag_col_cell_full_matched = True
 
@@ -439,8 +486,22 @@ class Table:
                                 cur_column_matched_tokens_dict['token_index_range_statement'] = []
                                 cur_column_matched_tokens_dict['score'] = []
 
-                            cur_column_matched_tokens_dict['token_index_range_statement'].append((token_index_stmnt, token_index_stmnt+token_i))
-                            cur_column_matched_tokens_dict['score'].append(1.0)
+                            # case a: Current matched tokens don't overlap with previous matched tokens (if available)
+                            #           Add the current matched tokens
+                            # case b: Overlap between current matched tokens with previous matched tokens
+                            #           If current one has better similarity score then replace the previous one
+                            flag_append_cur_matched_tokens = True
+                            flag_update_prev_matched_tokens = False
+                            if len(cur_column_matched_tokens_dict['token_index_range_statement']) > 0 and jaro_sim is not None:
+                                if token_index_stmnt < cur_column_matched_tokens_dict['token_index_range_statement'][-1][1]:
+                                    flag_append_cur_matched_tokens = False
+                                    if jaro_sim > cur_column_matched_tokens_dict['score'][-1]:
+                                        cur_column_matched_tokens_dict['token_index_range_statement'][-1] = (token_index_stmnt, token_index_stmnt+token_i)
+                                        cur_column_matched_tokens_dict['score'][-1] = jaro_sim
+
+                            if flag_append_cur_matched_tokens:
+                                cur_column_matched_tokens_dict['token_index_range_statement'].append((token_index_stmnt, token_index_stmnt+token_i))
+                                cur_column_matched_tokens_dict['score'].append(1.0 if jaro_sim is None else jaro_sim)
 
                             if verbose:
                                 col_info = (col_index, token_index_stmnt, token_index_stmnt + token_i)
@@ -453,7 +514,11 @@ class Table:
                                     prev_char_offset = x.start_char_offset + len(x.text)
 
                                 # col_cell_text = " ".join([x.text for x in self.cell_info_dict[row_index][col_index]])
-                                print("\tColumn cell matched: name: {} :: col info: {}".format(col_cell_text, col_info))
+                                print_text = "\tColumn cell matched: {} :: col info: {}".format(col_cell_text, col_info)
+                                if jaro_sim is not None:
+                                    print_text +=  " :: similarity score: {:.3f}".format(jaro_sim)
+                                print_text += " :: statement text matched: {}".format(stmnt_match_text)
+                                print(print_text)
                                 if not flag_col_cell_full_matched:
                                     print("\t\tPartial matched")
 
@@ -536,23 +601,6 @@ class Table:
                         # row_name = self.df[self.df.columns[0]][row_index-self.table_data_start_row_index]
                         if verbose:
                             print("\tRow matched: name: {} :: row info: {}".format(row_name, row_info))
-
-            if False:
-                for row_name in self.df[column_names[0]]:
-                    start_pos_arr = [i for i in range(len(statement_text_lower)) if
-                                     statement_text_lower.startswith(row_name.lower(), i)]
-                    flag_row_matched = False
-                    for start_pos in start_pos_arr:
-                        if start_pos > 0 and statement_text_lower[start_pos - 1] != " ":
-                            continue
-                        end_pos = start_pos + len(row_name)
-                        if end_pos < len(statement_text_lower) and statement_text_lower[end_pos] != " ":
-                            continue
-                        flag_row_matched = True
-
-                    if flag_row_matched:
-                        rows_matched.append(row_name)
-                        print("\tRow matched: {}".format(row_name))
 
             statement_type_predict = None
 
@@ -1209,13 +1257,13 @@ class Table:
                     token_index_end_row = rows_matched[0][2]
 
                     if row_index in self.cell_info_dict and col_index in self.cell_info_dict[row_index]:
-                        match_length = len(self.cell_info_dict[row_index][col_index])
+                        match_token_length = len(self.cell_info_dict[row_index][col_index])
 
                         flag_cell_matched = None
-                        for token_index_stmnt in range(len(self.statements[stmnt_i].tokens) - match_length + 1):
+                        for token_index_stmnt in range(len(self.statements[stmnt_i].tokens) - match_token_length + 1):
                             token_i = 0
                             flag_cell_matched = True
-                            while token_i < match_length:
+                            while token_i < match_token_length:
                                 if (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].text.lower() !=
                                         self.cell_info_dict[row_index][col_index][token_i].text.lower()) and \
                                         (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].lemma.lower() !=

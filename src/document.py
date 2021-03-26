@@ -78,7 +78,7 @@ class Document:
         self.doc_id = None
         self.nlp_process_obj = nlp_process_obj
 
-    def parse_xml(self, xml_file, table_tag="table", table_id=None, flag_modify_xml=False, flag_cell_span=True, verbose=False):
+    def parse_xml(self, xml_file, table_tag="table", table_id=None, flag_modify_xml=False, flag_cell_span=True, flag_approx_string_match=True, verbose=False):
         """Parse xml of the document.
 
             Parameters
@@ -88,6 +88,7 @@ class Document:
             table_id : str (default: None, pass a value to execute a particular table)
             flag_modify_xml : bool (True only for data version v1)
             flag_cell_span : bool (True from data version 1.3 onwards)
+            flag_approx_string_match : bool
             verbose : bool
         """
         assert os.path.exists(xml_file), "XML file; {} NOT found".format(xml_file)
@@ -132,7 +133,7 @@ class Document:
             try:
                 table_obj = Table(doc_id=self.doc_id, nlp_process_obj=self.nlp_process_obj)
                 table_obj.parse_xml(table_item=table_item, flag_cell_span=flag_cell_span, verbose=verbose)
-                statement_id_predict_type_map = table_obj.process_table(verbose=verbose)
+                statement_id_predict_type_map = table_obj.process_table(flag_approx_string_match=flag_approx_string_match, verbose=verbose)
                 n_statements_table = len(table_obj.statements)
                 # Build the table element for submit
                 table_output_elem = table_obj.build_table_element(ref_table_elem=table_item, statement_id_predict_type_map=statement_id_predict_type_map)
@@ -209,7 +210,8 @@ def main(args):
     nlp_process_obj = NLPProcess()
     nlp_process_obj.load_nlp_model(verbose=args.verbose)
     doc_obj = Document(nlp_process_obj=nlp_process_obj)
-    output_dict = doc_obj.parse_xml(xml_file=xml_file, table_id=args.table_id, flag_cell_span=args.flag_cell_span, verbose=args.verbose)
+    output_dict = doc_obj.parse_xml(xml_file=xml_file, table_id=args.table_id, flag_cell_span=args.flag_cell_span,
+                                    flag_approx_string_match=args.flag_approx_string_match, verbose=args.verbose)
 
     submit_dir = os.path.join(os.path.dirname(__file__), "../output/res")
     if not os.path.exists(submit_dir):
@@ -231,6 +233,8 @@ if __name__ == "__main__":
     parser.add_argument("--table_id", action="store", default=None, dest="table_id", help="Process specified table only.")
     parser.add_argument("--flag_cell_span", action="store_true", default=False, dest="flag_cell_span",
                         help="bool to indicate whether row, col span is mentioned for each cell. data version 1.3 introduces span.")
+    parser.add_argument("--flag_approx_string_match", action="store_true", default=False,
+                        dest="flag_approx_string_match")
     parser.add_argument("--flag_prettify", action="store_true", default=False, dest="flag_prettify", help="pretty print XML")
     parser.add_argument("--verbose", action="store_true", default=False, dest="verbose")
     args = parser.parse_args()

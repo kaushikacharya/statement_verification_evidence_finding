@@ -4,7 +4,7 @@
 N.B. If executing in console, execute the following as pre-requisite:
 export PYTHONIOENCODING=UTF-8
 
-Command: python -u -m src.dataset --flag_cell_span > ./output/dataset/dataset_train.txt 2>&1
+Command: python -u -m src.dataset --flag_cell_span --flag_approx_string_match > ./output/dataset/dataset_train.txt 2>&1
 """
 
 import argparse
@@ -23,7 +23,7 @@ class Dataset:
     def __init__(self, nlp_process_obj):
         self.nlp_process_obj = nlp_process_obj
 
-    def process_data_dir(self, data_dir, flag_cell_span=True, submit_dir=None):
+    def process_data_dir(self, data_dir, flag_cell_span=True, flag_approx_string_match=True, submit_dir=None):
         failed_tables_dataset = []
         n_tables_dataset = 0
         n_statements_dataset = 0
@@ -42,7 +42,7 @@ class Dataset:
         for xml_file_path in glob.iglob(os.path.join(data_dir, "*.xml")): # tqdm(glob.glob())
             print("\n{}".format(xml_file_path))
             doc_obj = Document(nlp_process_obj=self.nlp_process_obj)
-            doc_output_dict = doc_obj.parse_xml(xml_file=xml_file_path, flag_cell_span=flag_cell_span, verbose=False)
+            doc_output_dict = doc_obj.parse_xml(xml_file=xml_file_path, flag_cell_span=flag_cell_span, flag_approx_string_match=flag_approx_string_match, verbose=False)
 
             failed_tables_doc = doc_output_dict["failed_tables_doc"]
             n_tables_doc = doc_output_dict["n_tables_doc"]
@@ -101,7 +101,7 @@ def main(args):
         submit_dir = None
     else:
         submit_dir = args.submit_dir
-    dataset_obj.process_data_dir(data_dir=args.data_dir, flag_cell_span=args.flag_cell_span, submit_dir=submit_dir)
+    dataset_obj.process_data_dir(data_dir=args.data_dir, flag_cell_span=args.flag_cell_span, flag_approx_string_match=args.flag_approx_string_match, submit_dir=submit_dir)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -109,6 +109,7 @@ if __name__ == "__main__":
                         default="C:/KA/data/NLP/statement_verification_evidence_finding/train_manual_v1.3.2/v1.3.2/ref/", dest="data_dir")
     parser.add_argument("--flag_cell_span", action="store_true", default=False, dest="flag_cell_span",
                         help="bool to indicate whether row, col span is mentioned for each cell. data version 1.3 introduces span.")
+    parser.add_argument("--flag_approx_string_match", action="store_true", default=False, dest="flag_approx_string_match")
     parser.add_argument("--submit_dir", action="store", default=os.path.join(os.path.dirname(__file__), "../output/res"), dest="submit_dir")
     args = parser.parse_args()
 
