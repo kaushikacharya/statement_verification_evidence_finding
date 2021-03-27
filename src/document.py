@@ -111,6 +111,7 @@ class Document:
             print("root.tag: {} :: root.attrib: {}".format(root.tag, root.attrib))
 
         failed_tables = []
+        nested_column_tables = dict()
         n_statements_doc = 0
         n_statements_with_column_matched_doc = 0
         n_tables_doc = 0
@@ -141,6 +142,9 @@ class Document:
                 doc_output_elem.append(table_output_elem)
                 n_statements_doc += n_statements_table
                 n_tables_doc += 1
+
+                if table_obj.table_data_start_row_index > 1:
+                    nested_column_tables[table_item.attrib["id"]] = table_obj.table_data_start_row_index
 
                 if n_statements_table not in n_statements_table_frequency_map_doc:
                     n_statements_table_frequency_map_doc[n_statements_table] = 0
@@ -199,6 +203,7 @@ class Document:
         output_dict["n_statements_doc"] = n_statements_doc
         output_dict["n_statements_table_frequency_map_doc"] = n_statements_table_frequency_map_doc
         output_dict["n_statements_with_column_matched_doc"] = n_statements_with_column_matched_doc
+        output_dict["nested_column_tables_doc"] = nested_column_tables
         output_dict["doc_output_tree"] = doc_output_tree
         output_dict["confusion_dict_doc"] = confusion_dict_doc
 
