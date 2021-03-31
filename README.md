@@ -22,12 +22,21 @@ Below are the example commands.
     ```python
          python -u -m src.evaluate --input_dir <input_dir> --output_dir ./output/score/ --output_csv <csv_file>
     ```
+    
+    Directory structure expected by evaluate script
+    ```
+    input_dir
+    └── ref (ground truthed xml files)
+    └── res (predicted xml files)
+    ```
+    
 #### Results
 F1-score averaged over the tables.
 
-|  Split/Metrics | Train   |   Dev  |  Test  |
+|  Metrics/Split | Train   |   Dev  |  Test  |
 |----------------|---------|--------|--------|
-| task_a_2way_f1 |  0.3348 | 0.3645 | 0.3624 |
-| task_a_3way_f1 |  0.3348 | 0.4246 | 0.4625 |
-| task_b_f1 | NA |  0.3454 | 0.3426 | 0.3426 |
+| # tables       |  981    |   52   |  52    |
+| task_a_2way_f1 |  0.3508 | 0.3728 | 0.3777 |
+| task_a_3way_f1 |  0.3508 | 0.4303 | 0.4743 |
+| task_b_f1      |   NA    | 0.3634 | 0.3699 |
 
