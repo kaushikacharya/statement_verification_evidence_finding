@@ -272,7 +272,8 @@ def main(args):
 
         # https://stackoverflow.com/questions/3191528/csv-in-python-adding-an-extra-carriage-return-on-windows
         #   - Explains why newline="" is needed to avoid additional newline character
-        with io.open(os.path.join(output_dir, args.output_table_csv), mode="w", newline="") as fd:
+        output_table_csv = "score_table_{}_df.csv".format(args.data_split)
+        with io.open(os.path.join(output_dir, output_table_csv), mode="w", newline="") as fd:
             results_df.to_csv(path_or_buf=fd, index=False)
 
         # Write statement level results in a csv
@@ -280,7 +281,8 @@ def main(args):
         df_columns = ["File", "Table", "StatementId", "ground_truth_type", "predict_type", "text"]
         results_statement_df = pd.read_csv(filepath_or_buffer=csv_statement_output, names=df_columns)
 
-        with io.open(os.path.join(output_dir, args.output_statement_csv), mode="w", newline="") as fd:
+        output_statement_csv = "type_statement_{}_df.csv".format(args.data_split)
+        with io.open(os.path.join(output_dir, output_statement_csv), mode="w", newline="") as fd:
             results_statement_df.to_csv(path_or_buf=fd, index=False)
 
 if __name__ == "__main__":
@@ -288,9 +290,8 @@ if __name__ == "__main__":
     parser.add_argument("--input_dir", action="store", default="C:/KA/data/NLP/statement_verification_evidence_finding/train_manual_v1.3.2/v1.3.2/",
                         dest="input_dir", help="Directory containing a) ground truth data in res subdirectory   b) predicted data in ref subdirectory")
     parser.add_argument("--output_dir", action="store", default="./output/score/", dest="output_dir")
-    parser.add_argument("--output_table_csv", action="store", default="score_table_df.csv", dest="output_table_csv", help="Write scores for each table")
-    parser.add_argument("--output_statement_csv", action="store", default="type_statement_df.csv", dest="output_statement_csv",
-                        help="Write truth and predict type for each statement")
+    parser.add_argument("--data_split", action="store", default="train", dest="data_split",
+                        help="data split to be executed. Values permitted: train, dev, test")
     parser.add_argument("--verbose", action="store_true", default=False, dest="verbose")
     args = parser.parse_args()
 
