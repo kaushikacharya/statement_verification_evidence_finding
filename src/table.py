@@ -369,8 +369,8 @@ class Table:
             verbose : bool
         """
 
-        # key: statement id  value: predicted type
-        statement_id_predict_type_map = dict()
+        # key: statement id, value: dict (predict information in key, value format)
+        statement_id_predict_info_map = dict()
 
         if verbose:
             print("\n")
@@ -380,15 +380,19 @@ class Table:
                 print("Statement #{} :: id: {} :: type(ground truth): {} :: text: {}".format(
                     stmnt_i, self.statements[stmnt_i].id, self.statements[stmnt_i].type, self.statements[stmnt_i].text))
 
-            statement_type_predict = self.process_statement(stmnt_i=stmnt_i, flag_approx_string_match=flag_approx_string_match, verbose=verbose)
+            statement_predict_info = self.process_statement(stmnt_i=stmnt_i, flag_approx_string_match=flag_approx_string_match, verbose=verbose)
 
-            statement_id_predict_type_map[self.statements[stmnt_i].id] = statement_type_predict
+            stmnt_id = self.statements[stmnt_i].id
+            statement_id_predict_info_map[stmnt_id] = dict()
+            for k, v in statement_predict_info.items():
+                statement_id_predict_info_map[stmnt_id][k] = v
 
             if True:
+                statement_type_predict = statement_id_predict_info_map[stmnt_id]["type_predict"] if "type_predict" in statement_id_predict_info_map[stmnt_id] else None
                 print("\tStatement: id: {} :: type(ground truth): {} :: type(predicted): {} :: text: {}".format(
                     self.statements[stmnt_i].id, self.statements[stmnt_i].type, statement_type_predict, self.statements[stmnt_i].text))
 
-        return statement_id_predict_type_map
+        return statement_id_predict_info_map
 
     def process_statement(self, stmnt_i, flag_approx_string_match=False, verbose=False):
         """Process statement for statement verification and evidence finding
@@ -1435,9 +1439,15 @@ class Table:
                             if row_idx in self.cell_evidence_dict and col_idx in self.cell_evidence_dict[row_idx]:
                                 self.cell_evidence_dict[row_idx][col_idx].add(self.statements[stmnt_i].id)
 
-        return statement_type_predict
+        statement_predict_info = dict()
+        statement_predict_info["type_ground_truth"] = self.statements[stmnt_i].type
+        statement_predict_info["type_predict"] = statement_type_predict
+        statement_predict_info["n_columns_matched"] = len(selected_column_index_arr)
+        statement_predict_info["n_rows_matched"] = len(rows_matched)
 
-    def build_table_element(self, ref_table_elem, statement_id_predict_type_map):
+        return statement_predict_info
+
+    def build_table_element(self, ref_table_elem, statement_id_predict_info_map, predict_type_key="type_predict"):
         """Build XML table element with predictions.
             Populate only the fields which are absolutely required for evaluation.
 
@@ -1445,8 +1455,9 @@ class Table:
             ----------
             ref_table_elem : xml.etree.ElementTree.Element
                 Table xml element in input xml.
-            statement_id_predict_type_map : dict
-                key: statement id  value: type prediction
+            statement_id_predict_info_map : dict
+                key: statement id  value: prediction info dict
+            predict_type_key : str
 
             Returns
             -------
@@ -1505,8 +1516,8 @@ class Table:
             statement_elem = ET.SubElement(pred_statements_elem, "statement")
             statement_elem.set("id", self.statements[stmnt_i].id)
             # statement_elem.set("text", self.statements[stmnt_i].text)
-            if self.statements[stmnt_i].id in statement_id_predict_type_map:
-                statement_type_predict = statement_id_predict_type_map[self.statements[stmnt_i].id]
+            if self.statements[stmnt_i].id in statement_id_predict_info_map and predict_type_key in statement_id_predict_info_map[self.statements[stmnt_i].id]:
+                statement_type_predict = statement_id_predict_info_map[self.statements[stmnt_i].id][predict_type_key]
             else:
                 statement_type_predict = None
 

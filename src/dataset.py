@@ -31,6 +31,7 @@ class Dataset:
         n_statements_with_column_matched_dataset = 0
         n_statements_table_frequency_map_dataset = dict()
         table_statistics_dataset = {"doc": [], "table_id": [], "n_column_rows": [], "n_data_rows": []}
+        statement_predict_dataset = {"File": [], "Table": [], "StatementId": [], "n_columns_matched": [], "n_rows_matched": []}
         confusion_dict_dataset = dict()
         n_files = 0
 
@@ -52,6 +53,7 @@ class Dataset:
             n_statements_table_frequency_map_doc = doc_output_dict["n_statements_table_frequency_map_doc"]
             n_statements_with_column_matched_doc = doc_output_dict["n_statements_with_column_matched_doc"]
             table_statistics_doc = doc_output_dict["table_statistics_doc"]
+            table_predict_doc = doc_output_dict["table_predict_doc"]
             doc_output_tree = doc_output_dict["doc_output_tree"]
             confusion_dict_doc = doc_output_dict["confusion_dict_doc"]
 
@@ -79,6 +81,17 @@ class Dataset:
                 table_statistics_dataset["table_id"].append(table_id)
                 table_statistics_dataset["n_column_rows"].append(table_statistics_doc[table_id]["n_column_rows"])
                 table_statistics_dataset["n_data_rows"].append(table_statistics_doc[table_id]["n_data_rows"])
+
+            for table_id in table_predict_doc:
+                statement_id_predict_info_map = table_predict_doc[table_id]["predict_info_map"]
+                for stmnt_id in statement_id_predict_info_map:
+                    if statement_id_predict_info_map[stmnt_id]["type_ground_truth"] == statement_id_predict_info_map[stmnt_id]["type_predict"]:
+                        continue
+                    statement_predict_dataset["File"].append(os.path.basename(xml_file_path))
+                    statement_predict_dataset["Table"].append(table_id)
+                    statement_predict_dataset["StatementId"].append(stmnt_id)
+                    statement_predict_dataset["n_columns_matched"].append(statement_id_predict_info_map[stmnt_id]["n_columns_matched"])
+                    statement_predict_dataset["n_rows_matched"].append(statement_id_predict_info_map[stmnt_id]["n_rows_matched"])
 
             for type_truth in confusion_dict_doc:
                 if type_truth not in confusion_dict_dataset:
@@ -109,6 +122,9 @@ class Dataset:
         if False:
             with io.open(file=table_statistics_csv, mode="wb") as fd:
                 pd.DataFrame(data=table_statistics_dataset).to_csv(path_or_buf=fd, index=False)
+
+        statement_predict_csv = os.path.join(args.statistics_dir, "process_statement_{}.csv".format(data_split))
+        pd.DataFrame(data=statement_predict_dataset).to_csv(path_or_buf=statement_predict_csv, index=False)
 
 def main(args):
     nlp_process_obj = NLPProcess()
