@@ -983,7 +983,7 @@ class Table:
                     flag_candidate_vary = True
                     if verbose:
                         print("\tvary: {}".format(cur_token.text))
-                elif cur_token.lemma.lower() in ["identical", "same"]:
+                elif cur_token.lemma.lower() in ["identical", "same", "constant"]:
                     flag_candidate_identical = True
                     if verbose:
                         print("\tidentical: {}".format(cur_token.text))
@@ -1007,33 +1007,25 @@ class Table:
                     if row_idx in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_idx]:
                         self.cell_evidence_dict[row_idx][col_index].add(self.statements[stmnt_i].id)
 
-        if flag_candidate_vary and statement_type_predict is None:
+        if (flag_candidate_vary or flag_candidate_identical) and statement_type_predict is None:
             if len(selected_column_index_arr) == 1:
                 col_index = selected_column_index_arr[0]
+
                 if len(self.df.iloc[:, col_index].dropna().unique()) > 1:
-                    statement_type_predict = "entailed"
+                    if flag_candidate_vary:
+                        statement_type_predict = "entailed"
+                    else:
+                        statement_type_predict = "refuted"
                 else:
-                    statement_type_predict = "refuted"
+                    if flag_candidate_vary:
+                        statement_type_predict = "refuted"
+                    else:
+                        statement_type_predict = "entailed"
 
                 # assign evidence
                 for row_idx in range(self.table_data_end_row_index):
                     if row_idx in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_idx]:
                         self.cell_evidence_dict[row_idx][col_index].add(self.statements[stmnt_i].id)
-
-        if False:
-            m = re.search(r'(\bunique\b)', self.statements[stmnt_i].text, flags=re.I)
-
-            if m and verbose:
-                print("\tUniqueness: {}".format(m.group(0)))
-
-            if m and statement_type_predict is None:
-                if len(column_matched_tokens_dict) == 1:
-                    col_index = list(column_matched_tokens_dict.keys())[0]
-
-                    if len(self.df.iloc[:, col_index].unique()) == len(self.df):
-                        statement_type_predict = "entailed"
-                    else:
-                        statement_type_predict = "refuted"
 
         # candidate: count columns in the table
         #   TODO Verify if column names also mentioned
@@ -1167,7 +1159,7 @@ class Table:
         # candidate:
         #   a) Whether multiple rows have same/different value for a column
         #   b) Whether multiple columns have same/different value for a row
-        m = re.search(r'(\bsame\b|\bidentical\b|\bdifferent\b)', self.statements[stmnt_i].text, flags=re.I)
+        m = re.search(r'(\bsame\b|\bidentical\b|\bconstant\b|\bdifferent\b)', self.statements[stmnt_i].text, flags=re.I)
 
         if m and statement_type_predict is None:
             col_index = None
@@ -1180,7 +1172,7 @@ class Table:
                 cell_value_arr = [self.df.iloc[x[0] - self.table_data_start_row_index, col_index] for x in rows_matched]
                 flag_candidate_identical = all([x == cell_value_arr[0] for x in cell_value_arr[1:]])
 
-                if m.group(0).lower() in ["same", "identical"]:
+                if m.group(0).lower() in ["same", "identical", "constant"]:
                     if flag_candidate_identical:
                         statement_type_predict = "entailed"
                     else:
@@ -1218,7 +1210,7 @@ class Table:
                                   candidate_cols]
                 flag_candidate_identical = all([x == cell_value_arr[0] for x in cell_value_arr[1:]])
 
-                if m.group(0).lower() in ["same", "identical"]:
+                if m.group(0).lower() in ["same", "identical", "constant"]:
                     if flag_candidate_identical:
                         statement_type_predict = "entailed"
                     else:
