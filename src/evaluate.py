@@ -1,5 +1,15 @@
 #!/usr/bin/env python
 
+"""
+Pre-requisite:
+    - src/dataset.py should be executed before src/evaluate.py
+    - Ensure that there's no failed tables as mentioned in "summary" section of output of src/dataset.py
+        - Otherwise evaluate script would fail.
+
+Example command (to run on train data):
+    python -u -m src.evaluate --data_split train > ./output/score/score_train.txt 2>&1
+"""
+
 import argparse
 from csv import writer
 from io import StringIO
@@ -15,7 +25,7 @@ import sklearn
 import sklearn.metrics
 import pdb
 
-###USEFUL FONCTION
+###USEFUL FUNCTION
 
 def ls(filename):
     return sorted(glob(filename))
