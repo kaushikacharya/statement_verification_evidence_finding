@@ -409,6 +409,8 @@ class Table:
 
         # iterate over the table cell corresponding to the column headers
         flag_col_matched_arr = [None for i in range(len(self.df.columns))]
+        # TODO In the current approach, a column is considered match only if all the row of column headers match. \
+        #   But we need to allow cases where cell text of not all column header rows are mentioned in the statement.
 
         column_matched_tokens_dict = dict()
         for row_index in range(self.table_data_start_row_index):
@@ -429,15 +431,14 @@ class Table:
                         begin_optional_text = "["
 
                     if begin_optional_text:
-                        token_i = 1
+                        token_i = 0
                         while token_i < len(self.cell_info_dict[row_index][col_index]["tokens"]):
                             if self.cell_info_dict[row_index][col_index]["tokens"][token_i].text == begin_optional_text:
                                 optional_token_begin = token_i
                                 break
                             token_i += 1
 
-                match_token_length = optional_token_begin if optional_token_begin else len(
-                    self.cell_info_dict[row_index][col_index]["tokens"])
+                match_token_length = optional_token_begin if optional_token_begin is not None else len(self.cell_info_dict[row_index][col_index]["tokens"])
 
                 col_cell_match_text = ""
                 prev_char_offset = 0
@@ -449,42 +450,49 @@ class Table:
                                        len(self.cell_info_dict[row_index][col_index]["tokens"][token_i].text)
 
                 cur_column_matched_tokens_dict = dict()
-                for token_index_stmnt in range(len(self.statements[stmnt_i].tokens) - match_token_length + 1):
+                cur_column_matched_tokens_dict['token_index_range_statement'] = []
+                cur_column_matched_tokens_dict['score'] = []
+
+                for token_index_stmnt in range(len(self.statements[stmnt_i].tokens) - max(1, match_token_length) + 1):
                     # token_index_match_end_stmnt = token_index_stmnt + match_token_length
                     char_pos_match_stmnt_begin = self.statements[stmnt_i].tokens[token_index_stmnt].start_char_offset
-                    char_pos_match_stmnt_end = self.statements[stmnt_i].tokens[
-                                                   token_index_stmnt + match_token_length - 1].start_char_offset + \
-                                               len(self.statements[stmnt_i].tokens[
-                                                       token_index_stmnt + match_token_length - 1].text)
-                    stmnt_match_text = self.statements[stmnt_i].text[
-                                       char_pos_match_stmnt_begin: char_pos_match_stmnt_end]
+                    if match_token_length > 0:
+                        char_pos_match_stmnt_end = self.statements[stmnt_i].tokens[token_index_stmnt + match_token_length - 1].start_char_offset + \
+                                                   len(self.statements[stmnt_i].tokens[token_index_stmnt + match_token_length - 1].text)
+                    else:
+                        char_pos_match_stmnt_end = char_pos_match_stmnt_begin + len(self.statements[stmnt_i].tokens[token_index_stmnt].text)
+                    stmnt_match_text = self.statements[stmnt_i].text[char_pos_match_stmnt_begin: char_pos_match_stmnt_end]
 
                     # N.B. token_i variable could be confusing. It refers to token index in the column name cell and not of the statement tokens.
                     token_i = 0
                     jaro_sim = None
-                    if flag_approx_string_match:
-                        jaro_sim = jaro_similarity(col_cell_match_text.lower(), stmnt_match_text.lower())
+                    if match_token_length == 0:
+                        flag_col_cell_matched = None
+                    else:
+                        if flag_approx_string_match:
+                            jaro_sim = jaro_similarity(col_cell_match_text.lower(), stmnt_match_text.lower())
 
-                        if jaro_sim < self.jaro_similarity_threshold:
-                            flag_col_cell_matched = False
+                            if jaro_sim < self.jaro_similarity_threshold:
+                                flag_col_cell_matched = False
+                            else:
+                                flag_col_cell_matched = True
+
+                            # update token_i
+                            token_i = match_token_length
                         else:
                             flag_col_cell_matched = True
+                            while token_i < match_token_length:
+                                if (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].text.lower() !=
+                                        self.cell_info_dict[row_index][col_index]["tokens"][token_i].text.lower()) and \
+                                        (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].lemma.lower() !=
+                                             self.cell_info_dict[row_index][col_index]["tokens"][token_i].lemma.lower()):
+                                    flag_col_cell_matched = False
+                                    break
+                                token_i += 1
 
-                        # update token_i
-                        token_i = match_token_length
-                    else:
-                        flag_col_cell_matched = True
-                        while token_i < match_token_length:
-                            if (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].text.lower() !=
-                                    self.cell_info_dict[row_index][col_index]["tokens"][token_i].text.lower()) and \
-                                    (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].lemma.lower() !=
-                                         self.cell_info_dict[row_index][col_index]["tokens"][token_i].lemma.lower()):
-                                flag_col_cell_matched = False
-                                break
-                            token_i += 1
-
-                    if flag_col_cell_matched:
-                        if optional_token_begin:
+                    if flag_col_cell_matched is None or flag_col_cell_matched is True:
+                        flag_col_cell_full_matched = False
+                        if optional_token_begin is not None:
                             # The optional part of the column were not matched above with statement tokens.
                             #  Here we would continue matching that part as long as it matches.
                             # case (a): All the column tokens get matched.
@@ -502,19 +510,22 @@ class Table:
                                 if (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].text.lower() !=
                                         self.cell_info_dict[row_index][col_index]["tokens"][token_i].text.lower()) and \
                                         (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].lemma.lower() !=
-                                             self.cell_info_dict[row_index][col_index]["tokens"][
-                                                 token_i].lemma.lower()):
+                                             self.cell_info_dict[row_index][col_index]["tokens"][token_i].lemma.lower()):
                                     break
                                 else:
+                                    if flag_col_cell_matched is None and token_i > token_j:
+                                        # case: Entire cell text was identified as optional.
+                                        #       Now that at least a token from optional portion has been found matching,
+                                        #           assign flag to True.
+                                        # 2nd condition ensures that match happens beyond begin_optional_text i.e. post begin parenthesis
+                                        flag_col_cell_matched = True
+
                                     # update column cell matched text
                                     col_cell_match_text += " " * (self.cell_info_dict[row_index][col_index]["tokens"][
                                                                       token_i].start_char_offset - prev_char_offset)
-                                    col_cell_match_text += self.cell_info_dict[row_index][col_index]["tokens"][
-                                        token_i].text
-                                    prev_char_offset = self.cell_info_dict[row_index][col_index]["tokens"][
-                                                           token_i].start_char_offset + \
-                                                       len(self.cell_info_dict[row_index][col_index]["tokens"][
-                                                               token_i].text)
+                                    col_cell_match_text += self.cell_info_dict[row_index][col_index]["tokens"][token_i].text
+                                    prev_char_offset = self.cell_info_dict[row_index][col_index]["tokens"][token_i].start_char_offset + \
+                                                       len(self.cell_info_dict[row_index][col_index]["tokens"][token_i].text)
 
                                 token_i += 1
 
@@ -523,42 +534,37 @@ class Table:
 
                             if token_i > token_j:
                                 # update statement matched text
-                                char_pos_match_stmnt_end = self.statements[stmnt_i].tokens[
-                                                               token_index_stmnt + token_i - 1].start_char_offset + \
-                                                           len(self.statements[stmnt_i].tokens[
-                                                                   token_index_stmnt + token_i - 1].text)
-                                stmnt_match_text = self.statements[stmnt_i].text[
-                                                   char_pos_match_stmnt_begin: char_pos_match_stmnt_end]
+                                char_pos_match_stmnt_end = self.statements[stmnt_i].tokens[token_index_stmnt + token_i - 1].start_char_offset + \
+                                                           len(self.statements[stmnt_i].tokens[token_index_stmnt + token_i - 1].text)
+                                stmnt_match_text = self.statements[stmnt_i].text[char_pos_match_stmnt_begin: char_pos_match_stmnt_end]
                                 if flag_approx_string_match:
                                     jaro_sim = jaro_similarity(col_cell_match_text.lower(), stmnt_match_text.lower())
-                        else:
+                        elif flag_col_cell_matched:
                             flag_col_cell_full_matched = True
-
-                        if 'token_index_range_statement' not in cur_column_matched_tokens_dict:
-                            cur_column_matched_tokens_dict['token_index_range_statement'] = []
-                            cur_column_matched_tokens_dict['score'] = []
 
                         # case a: Current matched tokens don't overlap with previous matched tokens (if available)
                         #           Add the current matched tokens
                         # case b: Overlap between current matched tokens with previous matched tokens
                         #           If current one has better similarity score then replace the previous one
-                        flag_append_cur_matched_tokens = True
-                        flag_update_prev_matched_tokens = False
-                        if len(cur_column_matched_tokens_dict[
-                                   'token_index_range_statement']) > 0 and jaro_sim is not None:
-                            if token_index_stmnt < cur_column_matched_tokens_dict['token_index_range_statement'][-1][1]:
-                                flag_append_cur_matched_tokens = False
-                                if jaro_sim > cur_column_matched_tokens_dict['score'][-1]:
-                                    cur_column_matched_tokens_dict['token_index_range_statement'][-1] = (
-                                    token_index_stmnt, token_index_stmnt + token_i)
-                                    cur_column_matched_tokens_dict['score'][-1] = jaro_sim
+                        if flag_col_cell_matched:
+                            flag_append_cur_matched_tokens = True
+                            # flag_update_prev_matched_tokens = False
+                            if len(cur_column_matched_tokens_dict['token_index_range_statement']) > 0 and jaro_sim is not None:
+                                if token_index_stmnt < cur_column_matched_tokens_dict['token_index_range_statement'][-1][1]:
+                                    flag_append_cur_matched_tokens = False
+                                    if jaro_sim > cur_column_matched_tokens_dict['score'][-1]:
+                                        cur_column_matched_tokens_dict['token_index_range_statement'][-1] = (token_index_stmnt, token_index_stmnt + token_i)
+                                        cur_column_matched_tokens_dict['score'][-1] = jaro_sim
+                        else:
+                            assert flag_col_cell_matched is None, "flag_col_cell_matched: {} should be either True or None".format(flag_col_cell_matched)
+                            flag_append_cur_matched_tokens = False
 
                         if flag_append_cur_matched_tokens:
                             cur_column_matched_tokens_dict['token_index_range_statement'].append(
                                 (token_index_stmnt, token_index_stmnt + token_i))
                             cur_column_matched_tokens_dict['score'].append(1.0 if jaro_sim is None else jaro_sim)
 
-                        if verbose:
+                        if verbose and flag_col_cell_matched:
                             col_info = (col_index, token_index_stmnt, token_index_stmnt + token_i)
 
                             col_cell_text = ""
@@ -577,7 +583,7 @@ class Table:
                             if not flag_col_cell_full_matched:
                                 print("\t\tPartial matched")
 
-                if len(cur_column_matched_tokens_dict) > 0:
+                if len(cur_column_matched_tokens_dict["token_index_range_statement"]) > 0:
                     if flag_col_matched_arr[col_index] is False:
                         # Column failed to match in one of the previous column header row(s).
                         pass
@@ -607,11 +613,26 @@ class Table:
                                     column_matched_tokens_dict[col_idx] = dict()
                                 column_matched_tokens_dict[col_idx][row_index] = \
                                     column_matched_tokens_dict[col_index][row_index]
-                else:
+
+                                if flag_col_matched_arr[col_idx] is None:
+                                    flag_col_matched_arr[col_idx] = True
+
+                elif match_token_length > 0:
+                    # case: current cell not matched to statement
+                    #       Condition ensures that we are not considering non-matched when the entire cell text can be considered optional for matching
                     flag_col_matched_arr[col_index] = False
                     # remove if it was added in any of the previous column header row
                     if col_index in column_matched_tokens_dict:
                         column_matched_tokens_dict.pop(col_index)
+
+                    # Assign matched flag to consecutive next columns in case of current column cell ranges over multiple consecutive cells
+                    if all(k in self.cell_info_dict[row_index][col_index] for k in {"col_begin", "col_end"}):
+                        for col_idx in range(self.cell_info_dict[row_index][col_index]["col_begin"] + 1,
+                                             self.cell_info_dict[row_index][col_index]["col_end"]):
+                            flag_col_matched_arr[col_idx] = False
+                            # remove if added in any of the previous column header row
+                            if col_idx in column_matched_tokens_dict:
+                                column_matched_tokens_dict.pop(col_idx)
 
         # sort in terms of descending score
         for col_index in column_matched_tokens_dict:
@@ -621,8 +642,7 @@ class Table:
                 sorted_index_arr = sorted(range(len(column_matched_tokens_dict[col_index][row_index]["score"])),
                                           key=lambda i: (
                                           -1 * column_matched_tokens_dict[col_index][row_index]["score"][i],
-                                          column_matched_tokens_dict[col_index][row_index][
-                                              "token_index_range_statement"][i]))
+                                          column_matched_tokens_dict[col_index][row_index]["token_index_range_statement"][i]))
                 column_matched_tokens_dict[col_index][row_index]["score"] = [
                     column_matched_tokens_dict[col_index][row_index]["score"][i] for i in sorted_index_arr]
                 column_matched_tokens_dict[col_index][row_index]["token_index_range_statement"] = [
@@ -956,13 +976,18 @@ class Table:
         flag_candidate_unique = False
         flag_candidate_vary = False
         n_unique_row = None
+        associated_col_index = None
 
         if len(rows_matched) == 0:
             prev_token = None
             for token_index_stmnt in range(len(self.statements[stmnt_i].tokens)):
                 cur_token = self.statements[stmnt_i].tokens[token_index_stmnt]
+                head_token_index = None
+
                 if cur_token.lemma.lower() in ["different", "unique"]:
                     flag_candidate_unique = True
+                    head_token_index = cur_token.head_index
+
                     if prev_token and prev_token.part_of_speech_coarse == "NUM":
                         # e.g. 20506.xml, Table 2
                         #   Statement: There are 2 different types of measures.
@@ -985,15 +1010,27 @@ class Table:
                         print("\tvary: {}".format(cur_token.text))
                 elif cur_token.lemma.lower() in ["identical", "same", "constant"]:
                     flag_candidate_identical = True
+                    head_token_index = cur_token.head_index
                     if verbose:
                         print("\tidentical: {}".format(cur_token.text))
+
+                if head_token_index is not None:
+                    for col_idx in selected_column_index_arr:
+                        for row_idx in column_matched_tokens_dict[col_idx]:
+                            if any([start_token_index <= head_token_index < end_token_index for start_token_index, end_token_index in column_matched_tokens_dict[col_idx][row_idx]["token_index_range_statement"]]):
+                                associated_col_index = col_idx
 
                 # update previous token before next iteration
                 prev_token = cur_token
 
         if flag_candidate_unique and statement_type_predict is None:
+            col_index = None
             if len(selected_column_index_arr) == 1:
                 col_index = selected_column_index_arr[0]
+            elif associated_col_index is not None:
+                col_index = associated_col_index
+
+            if col_index is not None:
                 # expected unique count is based on whether number of different values of column is mentioned in the statement or not
                 n_expected_unique_row = n_unique_row if n_unique_row is not None else len(self.df)
 
@@ -1003,13 +1040,19 @@ class Table:
                     statement_type_predict = "refuted"
 
                 # assign evidence
-                for row_idx in range(self.table_data_end_row_index):
-                    if row_idx in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_idx]:
-                        self.cell_evidence_dict[row_idx][col_index].add(self.statements[stmnt_i].id)
+                for col_idx in selected_column_index_arr:
+                    for row_idx in range(self.table_data_end_row_index):
+                        if row_idx in self.cell_evidence_dict and col_idx in self.cell_evidence_dict[row_idx]:
+                            self.cell_evidence_dict[row_idx][col_idx].add(self.statements[stmnt_i].id)
 
         if (flag_candidate_vary or flag_candidate_identical) and statement_type_predict is None:
+            col_index = None
             if len(selected_column_index_arr) == 1:
                 col_index = selected_column_index_arr[0]
+            elif associated_col_index is not None:
+                col_index = associated_col_index
+
+            if col_index is not None:
 
                 if len(self.df.iloc[:, col_index].dropna().unique()) > 1:
                     if flag_candidate_vary:
@@ -1023,9 +1066,10 @@ class Table:
                         statement_type_predict = "entailed"
 
                 # assign evidence
-                for row_idx in range(self.table_data_end_row_index):
-                    if row_idx in self.cell_evidence_dict and col_index in self.cell_evidence_dict[row_idx]:
-                        self.cell_evidence_dict[row_idx][col_index].add(self.statements[stmnt_i].id)
+                for col_idx in selected_column_index_arr:
+                    for row_idx in range(self.table_data_end_row_index):
+                        if row_idx in self.cell_evidence_dict and col_idx in self.cell_evidence_dict[row_idx]:
+                            self.cell_evidence_dict[row_idx][col_idx].add(self.statements[stmnt_i].id)
 
         # candidate: count columns in the table
         #   TODO Verify if column names also mentioned
@@ -1262,6 +1306,8 @@ class Table:
                     token_index_end_column = -1
 
                     for row_idx in column_matched_tokens_dict[col_idx]:
+                        if len(column_matched_tokens_dict[col_idx][row_idx]["token_index_range_statement"]) == 0:
+                            continue
                         token_index_start_column = min(token_index_start_column,
                                                        column_matched_tokens_dict[col_idx][row_idx]["token_index_range_statement"][0][0])
                         token_index_end_column = max(token_index_end_column,
@@ -1399,12 +1445,26 @@ class Table:
                         token_i = 0
                         flag_cell_matched = True
                         while token_i < match_token_length:
+                            if self.statements[stmnt_i].tokens[token_index_stmnt + token_i].part_of_speech_coarse == \
+                                    self.cell_info_dict[row_index][col_index]["tokens"][token_i].part_of_speech_coarse == "NUM":
+                                flag_numeric_stmnt_token, numeric_stmnt_token_value = is_number(self.statements[stmnt_i].tokens[token_index_stmnt + token_i].text)
+                                flag_numeric_cell_token, numeric_cell_token_value = is_number(self.cell_info_dict[row_index][col_index]["tokens"][token_i].text)
+
+                                if flag_numeric_stmnt_token and flag_numeric_cell_token:
+                                    if numeric_stmnt_token_value != numeric_cell_token_value:
+                                        flag_cell_matched = False
+                                        break
+                                    else:
+                                        token_i += 1
+                                        continue
+
                             if (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].text.lower() !=
                                     self.cell_info_dict[row_index][col_index]["tokens"][token_i].text.lower()) and \
                                     (self.statements[stmnt_i].tokens[token_index_stmnt + token_i].lemma.lower() !=
                                          self.cell_info_dict[row_index][col_index]["tokens"][token_i].lemma.lower()):
                                 flag_cell_matched = False
                                 break
+
                             token_i += 1
 
                         if flag_cell_matched:
@@ -1580,6 +1640,10 @@ class Table:
             token_index_start = len(self.statements[stmnt_i].tokens)
             token_index_end = -1
             for row_index in column_matched_tokens_dict[col_index]:
+                if len(column_matched_tokens_dict[col_index][row_index]["score"]) == 0:
+                    # case: Current row_index cell for the column has optional text
+                    #        Cell has been skipped for matching as optional text of the cell wasn't found in statement.
+                    continue
                 avg_score += column_matched_tokens_dict[col_index][row_index]["score"][0]
                 token_index_start = min(token_index_start, column_matched_tokens_dict[col_index][row_index]["token_index_range_statement"][0][0])
                 token_index_end = max(token_index_end, column_matched_tokens_dict[col_index][row_index]["token_index_range_statement"][0][1])
@@ -1597,6 +1661,8 @@ class Table:
                 for row_index in column_matched_tokens_dict[cur_col_index]:
                     if row_index not in column_matched_tokens_dict[prev_col_index]:
                         continue
+                    if len(column_matched_tokens_dict[cur_col_index][row_index]["token_index_range_statement"]) == 0:
+                        continue
                     cur_col_token_index_range_statement = column_matched_tokens_dict[cur_col_index][row_index]["token_index_range_statement"][0]
                     prev_col_token_index_range_statement = column_matched_tokens_dict[prev_col_index][row_index]["token_index_range_statement"][0]
 
@@ -1610,6 +1676,8 @@ class Table:
                 if flag_overlap:
                     break
 
+            # ?? What if cur_col_index also has the same score as prev_col_index and the overlap is exact?
+            #   e.g. 20967.xml  All the odd columns and their immediate next column.
             if flag_overlap is False:
                 selected_column_index_arr.append(cur_col_index)
 

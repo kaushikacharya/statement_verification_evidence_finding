@@ -15,12 +15,12 @@ Below are the example commands.
 
 - Run over the dataset
     ```python
-         python -u -m src.dataset --data_dir <data_dir> --flag_cell_span --submit_dir <submit_dir>
+         python -u -m src.dataset --data_dir <data_dir> --data_split <data_split> --submit_dir <submit_dir> --flag_cell_span --flag_cell_span --flag_approx_string_match
     ```
     
 - Evaluate metrics
     ```python
-         python -u -m src.evaluate --input_dir <input_dir> --output_dir ./output/score/ --output_csv <csv_file>
+         python -u -m src.evaluate --input_dir <input_dir> --output_dir ./output/score/ --statistics_dir ./output/statistics --data_split <data_split>
     ```
     
     Directory structure expected by evaluate script
@@ -36,7 +36,7 @@ F1-score averaged over the tables.
 |  Metrics/Split | Train   |   Dev  |  Test  |
 |----------------|---------|--------|--------|
 | # tables       |  981    |   52   |  52    |
-| task_a_2way_f1 |  0.3584 | 0.3746 | 0.3921 |
-| task_a_3way_f1 |  0.3584 | 0.4284 | 0.4832 |
-| task_b_f1      |   NA    | 0.3645 | 0.3763 |
+| task_a_2way_f1 |  0.3493 | 0.3564 | 0.3770 |
+| task_a_3way_f1 |  0.3493 | 0.4174 | 0.4695 |
+| task_b_f1      |   NA    | 0.3538 | 0.3641 |
 
