@@ -40,3 +40,23 @@ F1-score averaged over the tables.
 | task_a_3way_f1 |  0.3493 | 0.4174 | 0.4695 |
 | task_b_f1      |   NA    | 0.3538 | 0.3641 |
 
+#### Publication
+[KaushikAcharya at SemEval-2021 Task 9: Candidate Generation for Fact Verification over Tables](https://aclanthology.org/2021.semeval-1.181/) (SemEval)
+
+#### Citation
+If you find this implementation helpful, please consider citing:
+```
+@inproceedings{acharya-2021-kaushikacharya,
+    title = "{K}aushik{A}charya at {S}em{E}val-2021 Task 9: Candidate Generation for Fact Verification over Tables",
+    author = "Acharya, Kaushik",
+    booktitle = "Proceedings of the 15th International Workshop on Semantic Evaluation (SemEval-2021)",
+    month = aug,
+    year = "2021",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2021.semeval-1.181",
+    doi = "10.18653/v1/2021.semeval-1.181",
+    pages = "1271--1275",
+    abstract = "This paper describes the system submitted in the SemEval-2021 Statement Verification and Evidence Finding with Tables task. The system relies on candidate generation for logical forms on the table based on keyword matching and dependency parsing on the claim statements.",
+}
+```
